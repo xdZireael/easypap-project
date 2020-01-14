@@ -1,6 +1,7 @@
 
 #include "easypap.h"
 
+#include <omp.h>
 
 #define MAX_ITERATIONS 4096
 #define ZOOM_SPEED -0.01

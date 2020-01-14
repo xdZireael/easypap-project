@@ -1,6 +1,7 @@
 
 #include "easypap.h"
 
+#include <omp.h>
 
 ///////////////////////////// Simple sequential version (seq)
 // Suggested cmdline:

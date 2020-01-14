@@ -1,6 +1,7 @@
 
 #include "easypap.h"
 
+#include <omp.h>
 
 static unsigned PIX_BLOC = 16;
 static unsigned LOG_BLOC = 4; // LOG2(PIX_BLOC)

@@ -1,6 +1,7 @@
 
 #include "easypap.h"
 
+#include <omp.h>
 
 static inline unsigned compute_color (int i, int j)
 {

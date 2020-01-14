@@ -2,6 +2,7 @@
 #include "easypap.h"
 
 #include <math.h>
+#include <omp.h>
 
 static void rotate (void);
 static unsigned compute_color (int i, int j);

@@ -2,7 +2,6 @@
 #include "easypap.h"
 
 #include <omp.h>
-#include <stdbool.h>
 
 ///////////////////////////// Simple sequential version (seq)
 // Suggested cmdline(s):
