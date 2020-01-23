@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
-EASYPAPDIR=${EASYPAPDIR:-.}
+_dir=`dirname $BASH_SOURCE`
+_dir=`dirname $_dir`
 
-. ${EASYPAPDIR}/script/easypap-utilities.bash
+. ${_dir}/script/easypap-utilities.bash
+
+unset _dir
 
 _easypap_completions()
 {
