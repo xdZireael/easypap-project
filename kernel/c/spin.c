@@ -48,6 +48,7 @@ unsigned spin_compute_seq (unsigned nb_iter)
   return 0;
 }
 
+
 // Tile inner computation
 static void do_tile_reg (int x, int y, int width, int height)
 {
@@ -71,6 +72,19 @@ static void do_tile (int x, int y, int width, int height, int who)
   monitoring_end_tile (x, y, width, height, who);
 }
 
+
+unsigned spin_compute_line (unsigned nb_iter)
+{
+  for (unsigned it = 1; it <= nb_iter; it++) {
+
+    for (int i = 0; i < DIM; i++)
+      do_tile (0, i, DIM, 1, omp_get_thread_num ());
+
+    rotate (); // Slightly increase the base angle
+  }
+
+  return 0;
+}
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline(s):
