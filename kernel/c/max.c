@@ -95,6 +95,37 @@ unsigned max_compute_seq (unsigned nb_iter)
   return 0;
 }
 
+///////////////////////////// Tiled sequential version (tiled)
+// Suggested cmdline(s):
+// ./run -l images/spirale.png -k max -v tiled -g 16 -m
+//
+unsigned max_compute_tiled (unsigned nb_iter)
+{
+  unsigned res = 0;
+
+  for (unsigned it = 1; it <= nb_iter; it++) {
+    int change = 0;
+
+    // Bottom-right propagation
+    for (int i = 0; i < GRAIN; i++)
+      for (int j = 0; j < GRAIN; j++)
+        change |= tile_down_right (j * TILE_SIZE, i * TILE_SIZE, TILE_SIZE,
+                                       TILE_SIZE, 0);
+    // Up-left propagation
+    for (int i = GRAIN - 1; i >= 0; i--)
+      for (int j = GRAIN - 1; j >= 0; j--)
+        change |= tile_up_left (j * TILE_SIZE, i * TILE_SIZE, TILE_SIZE,
+                                    TILE_SIZE, 0);
+
+    if (!change) {
+      res = it;
+      break;
+    }
+  }
+
+  return res;
+}
+
 
 ///////////////////////////// Drawing functions
 
