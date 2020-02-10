@@ -23,16 +23,16 @@
 #define SHIFT_FACTOR 0.02
 #define MIN_DURATION 100.0
 
-#define WINDOW_WIDTH 1920
-#define WINDOW_MAX_HEIGHT 1024
+#define WINDOW_MIN_WIDTH 1024
+// no WINDOW_MIN_HEIGHT: needs to be automatically computed
 
-#define MIN_TASK_HEIGHT 6
+#define MIN_TASK_HEIGHT 8
 #define MAX_TASK_HEIGHT 44
 
-#define BIG_PREVIEW_DIM 512
-#define SMALL_PREVIEW_DIM 384
+#define MAX_PREVIEW_DIM 512
+#define MIN_PREVIEW_DIM 256
 
-#define Y_MARGIN 4
+#define Y_MARGIN 5
 #define CPU_ROW_HEIGHT (TASK_HEIGHT + 2 * Y_MARGIN + 2)
 #define GANTT_WIDTH (WINDOW_WIDTH - (LEFT_MARGIN + PREVIEW_DIM + TOP_MARGIN))
 #define LEFT_MARGIN 64
@@ -56,11 +56,14 @@ static SDL_Texture **thumb_tex = NULL;
 #endif
 
 static int TASK_HEIGHT   = MAX_TASK_HEIGHT;
-static int WINDOW_HEIGHT = WINDOW_MAX_HEIGHT; // 584 is the minimum
+static int WINDOW_HEIGHT = -1;
+static int WINDOW_WIDTH  = -1;
+
 static int GANTT_HEIGHT, PREVIEW_DIM;
 
 static SDL_Window *window           = NULL;
 static SDL_Renderer *renderer       = NULL;
+static TTF_Font *the_font           = NULL;
 static SDL_Texture **perf_fill      = NULL;
 static SDL_Texture *text_texture    = NULL;
 static SDL_Texture *vertical_line   = NULL;
@@ -115,36 +118,64 @@ struct
   int first_displayed_iter, last_displayed_iter;
 } trace_ctrl[MAX_TRACES];
 
-static void compute_layout (void)
+static inline unsigned layout_get_min_width (void)
+{
+  return WINDOW_MIN_WIDTH;
+}
+
+static unsigned layout_get_min_height (void)
+{
+  unsigned need_left, need_right, gantt_h;
+
+  if (nb_traces == 1) {
+    need_right = TOP_MARGIN + MIN_PREVIEW_DIM + BOTTOM_MARGIN;
+    gantt_h    = trace[0].nb_cores * (MIN_TASK_HEIGHT + 2 * Y_MARGIN + 2);
+    need_left  = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
+  } else {
+    need_right =
+        TOP_MARGIN + 2 * MIN_PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
+    gantt_h = (trace[0].nb_cores + trace[1].nb_cores) *
+                  (MIN_TASK_HEIGHT + 2 * Y_MARGIN + 2) +
+              INTERTRACE_MARGIN;
+    need_left = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
+  }
+  return max (need_left, need_right);
+}
+
+static void layout_place_buttons (void)
+{
+  quick_nav_rect.x = trace_display_info[0].gantt.x +
+                     trace_display_info[0].gantt.w - quick_nav_rect.w;
+  quick_nav_rect.y = 2;
+
+  align_rect.x = quick_nav_rect.x - Y_MARGIN - align_rect.w;
+  align_rect.y = 2;
+}
+
+static void layout_recompute (void)
 {
   unsigned need_left, need_right, max_need;
 
   if (nb_traces == 1) {
-    // We have only one trace, so use BIG PREVIEW
-    PREVIEW_DIM = BIG_PREVIEW_DIM;
+    // Compute preview size
+    PREVIEW_DIM = min (MAX_PREVIEW_DIM,
+                       max (MIN_PREVIEW_DIM,
+                            min (WINDOW_WIDTH / 4,
+                                 WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN)));
 
-    need_right = TOP_MARGIN + PREVIEW_DIM + BOTTOM_MARGIN;
+    // See how much space we have for GANTT chart
+    unsigned space = WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
+    space /= trace[0].nb_cores;
+    TASK_HEIGHT = space - 2 * Y_MARGIN - 2;
+    if (TASK_HEIGHT < MIN_TASK_HEIGHT)
+      exit_with_error ("Window height (%d) is not big enough to display so "
+                       "many CPUS (%d)\n",
+                       WINDOW_HEIGHT, trace[0].nb_cores);
 
-    // First try with max task height
+    if (TASK_HEIGHT > MAX_TASK_HEIGHT)
+      TASK_HEIGHT = MAX_TASK_HEIGHT;
+
     GANTT_HEIGHT = trace[0].nb_cores * CPU_ROW_HEIGHT;
-    need_left    = TOP_MARGIN + GANTT_HEIGHT + BOTTOM_MARGIN;
-    max_need     = max (need_left, need_right);
-    if (max_need <= WINDOW_HEIGHT) {
-      // We're done!
-      WINDOW_HEIGHT = max_need;
-    } else {
-      // Here, we shall shrink CPU rows
-      unsigned space = WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
-      space /= trace[0].nb_cores;
-      TASK_HEIGHT = space - 2 * Y_MARGIN - 2;
-      if (TASK_HEIGHT < MIN_TASK_HEIGHT)
-        exit_with_error ("Window height (%d) is not big enough to display so "
-                         "many CPUS (%d)\n",
-                         WINDOW_HEIGHT, trace[0].nb_cores);
-      // printf ("task height shrunk to %d\n", TASK_HEIGHT);
-
-      GANTT_HEIGHT = trace[0].nb_cores * CPU_ROW_HEIGHT;
-    }
 
     trace_display_info[0].gantt.x = LEFT_MARGIN;
     trace_display_info[0].gantt.y = TOP_MARGIN;
@@ -152,50 +183,43 @@ static void compute_layout (void)
     trace_display_info[0].gantt.h = GANTT_HEIGHT;
 
     trace_display_info[0].mosaic.x = LEFT_MARGIN + GANTT_WIDTH + TOP_MARGIN / 2;
-    trace_display_info[0].mosaic.y =
-        TOP_MARGIN; // + (WINDOW_HEIGHT - need_right) / 2;
+    trace_display_info[0].mosaic.y = TOP_MARGIN;
     trace_display_info[0].mosaic.w = PREVIEW_DIM;
     trace_display_info[0].mosaic.h = PREVIEW_DIM;
   } else {
     unsigned padding = 0;
 
-    PREVIEW_DIM = BIG_PREVIEW_DIM;
-
+    // Compute preview size
+    PREVIEW_DIM =
+        min (MAX_PREVIEW_DIM,
+             max (MIN_PREVIEW_DIM,
+                  min (WINDOW_WIDTH / 4, (WINDOW_HEIGHT - TOP_MARGIN -
+                                          BOTTOM_MARGIN - INTERTRACE_MARGIN) /
+                                             2)));
     need_right =
         TOP_MARGIN + 2 * PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
+
+    // See how much space we have for GANTT chart
+    unsigned space =
+        WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN - INTERTRACE_MARGIN;
+    space /= (trace[0].nb_cores + trace[1].nb_cores);
+    TASK_HEIGHT = space - 2 * Y_MARGIN - 2;
+    if (TASK_HEIGHT < MIN_TASK_HEIGHT)
+      exit_with_error ("Window height (%d) is not big enough to display so "
+                       "many CPUS (%d)\n",
+                       WINDOW_HEIGHT, trace[0].nb_cores);
+
+    if (TASK_HEIGHT > MAX_TASK_HEIGHT)
+      TASK_HEIGHT = MAX_TASK_HEIGHT;
 
     // First try with max task height
     GANTT_HEIGHT = (trace[0].nb_cores + trace[1].nb_cores) * CPU_ROW_HEIGHT +
                    INTERTRACE_MARGIN;
     need_left = TOP_MARGIN + GANTT_HEIGHT + BOTTOM_MARGIN;
     max_need  = max (need_left, need_right);
-    if (max_need <= WINDOW_HEIGHT) {
-      // We're done!
-      WINDOW_HEIGHT = max_need;
-      padding       = max_need - need_left;
-    } else {
-      // Here, we shall shrink CPU rows
-      unsigned space =
-          WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN - INTERTRACE_MARGIN;
-      space /= (trace[0].nb_cores + trace[1].nb_cores);
-      TASK_HEIGHT = space - 2 * Y_MARGIN - 2;
-      if (TASK_HEIGHT < MIN_TASK_HEIGHT)
-        exit_with_error ("Window height (%d) is not big enough to display so "
-                         "many CPUS (%d)\n",
-                         WINDOW_HEIGHT, trace[0].nb_cores + trace[1].nb_cores);
-      // printf ("task height shrunk to %d\n", TASK_HEIGHT);
 
-      GANTT_HEIGHT = (trace[0].nb_cores + trace[1].nb_cores) * CPU_ROW_HEIGHT +
-                     INTERTRACE_MARGIN;
-
-      need_left = TOP_MARGIN + GANTT_HEIGHT + BOTTOM_MARGIN;
-      if (need_right > need_left) {
-        PREVIEW_DIM = SMALL_PREVIEW_DIM;
-        need_right =
-            TOP_MARGIN + 2 * PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
-      }
-      WINDOW_HEIGHT = max (need_left, need_right);
-    }
+    if (WINDOW_HEIGHT > need_left)
+      padding = WINDOW_HEIGHT - need_left;
 
     trace_display_info[0].gantt.x = LEFT_MARGIN;
     trace_display_info[0].gantt.y = TOP_MARGIN + padding / 2;
@@ -226,12 +250,12 @@ static void compute_layout (void)
   gantts_bounding_box.h = (trace_display_info[nb_traces - 1].gantt.y +
                            trace_display_info[nb_traces - 1].gantt.h - 1) -
                           gantts_bounding_box.y;
+
+  // printf ("Window initial size: %dx%d\n", WINDOW_WIDTH, WINDOW_HEIGHT);
 }
 
 static inline int time_to_pixel (long time)
 {
-  // return LEFT_MARGIN + (time - (long)start_time) * GANTT_WIDTH /
-  // (long)duration;
   return LEFT_MARGIN + time * GANTT_WIDTH / duration -
          start_time * GANTT_WIDTH / duration;
 }
@@ -426,18 +450,13 @@ static void create_tab_textures (TTF_Font *font)
   }
 }
 
-static void create_text_texture (void)
+static void create_cpu_textures (TTF_Font *font)
 {
   SDL_Surface *surface =
       SDL_CreateRGBSurface (0, LEFT_MARGIN, WINDOW_HEIGHT, 32, 0xff000000,
                             0x00ff0000, 0x0000ff00, 0x000000ff);
   if (surface == NULL)
     exit_with_error ("SDL_CreateRGBSurface failed: %s", SDL_GetError ());
-
-  TTF_Font *font = TTF_OpenFont ("fonts/FreeSansBold.ttf", FONT_HEIGHT - 4);
-
-  if (font == NULL)
-    exit_with_error ("TTF_OpenFont: %s", TTF_GetError ());
 
   for (int t = 0; t < nb_traces; t++)
     for (int c = 0; c < trace[t].nb_cores; c++) {
@@ -457,11 +476,8 @@ static void create_text_texture (void)
       SDL_FreeSurface (s);
     }
 
-  create_digit_textures (font);
-
-  create_tab_textures (font);
-
-  TTF_CloseFont (font);
+  if (text_texture == NULL)
+    SDL_DestroyTexture (text_texture);
 
   text_texture = SDL_CreateTextureFromSurface (renderer, surface);
   if (text_texture == NULL)
@@ -470,7 +486,16 @@ static void create_text_texture (void)
   SDL_FreeSurface (surface);
 }
 
-void create_misc_tex (void)
+static void create_text_texture (TTF_Font *font)
+{
+  create_cpu_textures (font);
+
+  create_digit_textures (font);
+
+  create_tab_textures (font);
+}
+
+static void create_misc_tex (void)
 {
   SDL_Surface *surf = SDL_CreateRGBSurface (0, 2, WINDOW_HEIGHT, 32, 0xff000000,
                                             0x00ff0000, 0x0000ff00, 0x000000ff);
@@ -509,9 +534,6 @@ void create_misc_tex (void)
 
   SDL_QueryTexture (quick_nav_tex, NULL, NULL, &quick_nav_rect.w,
                     &quick_nav_rect.h);
-  quick_nav_rect.x = trace_display_info[0].gantt.x +
-                     trace_display_info[0].gantt.w - quick_nav_rect.w;
-  quick_nav_rect.y = 2;
 
   surf = IMG_Load ("./traces/img/auto-align.png");
   if (surf == NULL)
@@ -523,8 +545,6 @@ void create_misc_tex (void)
                           trace_data_align_mode ? 0xFF : BUTTON_ALPHA);
 
   SDL_QueryTexture (align_tex, NULL, NULL, &align_rect.w, &align_rect.h);
-  align_rect.x = quick_nav_rect.x - Y_MARGIN - align_rect.w;
-  align_rect.y = 2;
 }
 
 // Display functions
@@ -535,8 +555,11 @@ static inline void get_tile_rect (trace_t *tr, trace_task_t *t, SDL_Rect *dst)
            trace_display_info[tr->num].mosaic.x;
   dst->y = t->y * trace_display_info[tr->num].mosaic.h / tr->dimensions +
            trace_display_info[tr->num].mosaic.y;
-  dst->w = t->w * trace_display_info[tr->num].mosaic.w / tr->dimensions ?: 1;
-  dst->h = t->h * trace_display_info[tr->num].mosaic.h / tr->dimensions ?: 1;
+  dst->w = ((t->x + t->w) * trace_display_info[tr->num].mosaic.w / tr->dimensions + trace_display_info[tr->num].mosaic.x - dst->x) ?: 1;
+  dst->h = ((t->y + t->h) * trace_display_info[tr->num].mosaic.h / tr->dimensions + trace_display_info[tr->num].mosaic.y - dst->y) ?: 1;
+
+  //dst->w = t->w * trace_display_info[tr->num].mosaic.w / tr->dimensions ?: 1;
+  //dst->h = t->h * trace_display_info[tr->num].mosaic.h / tr->dimensions ?: 1;
 }
 
 static void show_tile (trace_t *tr, trace_task_t *t, unsigned cpu,
@@ -904,7 +927,8 @@ static void trace_graphics_display (void)
             dst.w = time_to_pixel (task_end_time (tr, t)) - dst.x + 1;
             dst.h = TASK_HEIGHT;
 
-            if (horiz_mode && mouse_in_gantt_zone && dst.y <= mouse_y && mouse_y < dst.y + dst.h) {
+            if (horiz_mode && mouse_in_gantt_zone && dst.y <= mouse_y &&
+                mouse_y < dst.y + dst.h) {
               if (selected_first == NULL) {
                 selected_first = first;
                 selected_cpu   = c;
@@ -1384,7 +1408,20 @@ void trace_graphics_toggle_align_mode ()
   trace_graphics_display ();
 }
 
-void trace_graphics_init (void)
+void trace_graphics_relayout (unsigned w, unsigned h)
+{
+  WINDOW_WIDTH  = w;
+  WINDOW_HEIGHT = h;
+
+  layout_recompute ();
+  layout_place_buttons ();
+
+  create_cpu_textures (the_font);
+
+  trace_graphics_display ();
+}
+
+void trace_graphics_init (unsigned w, unsigned h)
 {
   max_iterations =
       max (trace[0].nb_iterations, trace[nb_traces - 1].nb_iterations);
@@ -1393,7 +1430,10 @@ void trace_graphics_init (void)
                   iteration_end_time (trace + nb_traces - 1,
                                       trace[nb_traces - 1].nb_iterations - 1));
 
-  compute_layout ();
+  WINDOW_WIDTH  = max (w, layout_get_min_width ());
+  WINDOW_HEIGHT = max (h, layout_get_min_height ());
+
+  layout_recompute ();
 
   if (SDL_Init (SDL_INIT_VIDEO) != 0)
     exit_with_error ("SDL_Init");
@@ -1407,9 +1447,12 @@ void trace_graphics_init (void)
              trace[0].label, trace[1].label);
 
   window = SDL_CreateWindow (wintitle, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT,
-                             SDL_WINDOW_SHOWN);
+                             SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
   if (window == NULL)
     exit_with_error ("SDL_CreateWindow");
+
+  SDL_SetWindowMinimumSize (window, layout_get_min_width (),
+                            layout_get_min_height ());
 
   // No Vsync provides a (much) smoother experience
   renderer = SDL_CreateRenderer (
@@ -1425,10 +1468,17 @@ void trace_graphics_init (void)
 
   create_misc_tex ();
 
+  layout_place_buttons ();
+
   if (TTF_Init () < 0)
     exit_with_error ("TTF_Init");
 
-  create_text_texture ();
+  the_font = TTF_OpenFont ("fonts/FreeSansBold.ttf", FONT_HEIGHT - 4);
+
+  if (the_font == NULL)
+    exit_with_error ("TTF_OpenFont: %s", TTF_GetError ());
+
+  create_text_texture (the_font);
 
 #ifdef PRELOAD_THUMBNAILS
   preload_thumbnails (max_iterations);
