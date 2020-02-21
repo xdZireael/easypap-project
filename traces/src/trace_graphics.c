@@ -68,6 +68,7 @@ static SDL_Texture **perf_fill      = NULL;
 static SDL_Texture *text_texture    = NULL;
 static SDL_Texture *vertical_line   = NULL;
 static SDL_Texture *horizontal_line = NULL;
+static SDL_Texture *horizontal_bis  = NULL;
 static SDL_Texture *bulle_tex       = NULL;
 static SDL_Texture *us_tex          = NULL;
 static SDL_Texture *tab_left        = NULL;
@@ -265,19 +266,48 @@ static inline long pixel_to_time (int x)
   return start_time + (x - LEFT_MARGIN) * duration / GANTT_WIDTH;
 }
 
-static inline int point_in_rect (SDL_Rect *r, int x, int y)
+static inline int point_in_xrange (SDL_Rect *r, int x)
 {
-  return x >= r->x && x < (r->x + r->w) && y >= r->y && y < (r->y + r->h);
+  return x >= r->x && x < (r->x + r->w);
 }
 
-static inline int mouse_inside_mosaic (unsigned num, int x, int y)
+static inline int point_in_yrange (SDL_Rect *r, int y)
+{
+  return y >= r->y && y < (r->y + r->h);
+}
+
+static inline int point_in_rect (SDL_Rect *r, int x, int y)
+{
+  return point_in_xrange (r, x) && point_in_yrange (r, y);
+}
+
+static inline int point_inside_mosaic (unsigned num, int x, int y)
 {
   return point_in_rect (&trace_display_info[num].mosaic, x, y);
 }
 
-static inline int mouse_inside_gantts (int x, int y)
+static inline int point_inside_gantt (unsigned num, int x, int y)
+{
+  return point_in_rect (&trace_display_info[num].gantt, x, y);
+}
+
+static inline int point_inside_gantts (int x, int y)
 {
   return point_in_rect (&gantts_bounding_box, x, y);
+}
+
+static int get_y_mouse_sibbling (void)
+{
+  for (int t = 0; t < MAX_TRACES; t++) {
+    if (point_in_rect (&trace_display_info[t].gantt, mouse_x, mouse_y)) {
+      int dy = mouse_y - trace_display_info[t].gantt.y;
+      if (dy < trace_display_info[1 - t].gantt.h)
+        return trace_display_info[1 - t].gantt.y + dy;
+      else
+        return mouse_y;
+    }
+  }
+  return mouse_y;
 }
 
 // Texture creation functions
@@ -515,6 +545,11 @@ static void create_misc_tex (void)
   SDL_FillRect (surf, NULL, SDL_MapRGB (surf->format, 0, 255, 255));
   horizontal_line = SDL_CreateTextureFromSurface (renderer, surf);
   SDL_SetTextureBlendMode (horizontal_line, SDL_BLENDMODE_BLEND);
+
+  SDL_FillRect (surf, NULL, SDL_MapRGB (surf->format, 150, 150, 200));
+  horizontal_bis = SDL_CreateTextureFromSurface (renderer, surf);
+  SDL_SetTextureBlendMode (horizontal_bis, SDL_BLENDMODE_BLEND);
+
   SDL_FreeSurface (surf);
 
   surf = IMG_Load ("./traces/img/bubble.png");
@@ -555,11 +590,14 @@ static inline void get_tile_rect (trace_t *tr, trace_task_t *t, SDL_Rect *dst)
            trace_display_info[tr->num].mosaic.x;
   dst->y = t->y * trace_display_info[tr->num].mosaic.h / tr->dimensions +
            trace_display_info[tr->num].mosaic.y;
-  dst->w = ((t->x + t->w) * trace_display_info[tr->num].mosaic.w / tr->dimensions + trace_display_info[tr->num].mosaic.x - dst->x) ?: 1;
-  dst->h = ((t->y + t->h) * trace_display_info[tr->num].mosaic.h / tr->dimensions + trace_display_info[tr->num].mosaic.y - dst->y) ?: 1;
-
-  //dst->w = t->w * trace_display_info[tr->num].mosaic.w / tr->dimensions ?: 1;
-  //dst->h = t->h * trace_display_info[tr->num].mosaic.h / tr->dimensions ?: 1;
+  dst->w =
+      ((t->x + t->w) * trace_display_info[tr->num].mosaic.w / tr->dimensions +
+       trace_display_info[tr->num].mosaic.x - dst->x)
+          ?: 1;
+  dst->h =
+      ((t->y + t->h) * trace_display_info[tr->num].mosaic.h / tr->dimensions +
+       trace_display_info[tr->num].mosaic.y - dst->y)
+          ?: 1;
 }
 
 static void show_tile (trace_t *tr, trace_task_t *t, unsigned cpu,
@@ -703,6 +741,10 @@ static void display_mouse_selection (trace_task_t *t)
       dst.h = 1;
 
       SDL_RenderCopy (renderer, horizontal_line, NULL, &dst);
+
+      dst.y = get_y_mouse_sibbling ();
+      if (dst.y != mouse_y)
+        SDL_RenderCopy (renderer, horizontal_bis, NULL, &dst);
     }
   } else {
     // vertical bar
@@ -739,33 +781,31 @@ static void display_misc_status (void)
     SDL_RenderCopy (renderer, align_tex, NULL, &align_rect);
 }
 
-static void set_tiles_background (void)
+static void display_tile_background (int tr)
 {
 #ifdef PRELOAD_THUMBNAILS
   static int displayed_iter[MAX_TRACES] = {-1, -1};
   static SDL_Texture *tex[MAX_TRACES]   = {NULL};
 
-  for (int tr = 0; tr < nb_traces; tr++) {
-    SDL_RenderCopy (renderer, black_square, NULL,
-                    &trace_display_info[tr].mosaic);
+  SDL_RenderCopy (renderer, black_square, NULL, &trace_display_info[tr].mosaic);
 
-    if (use_thumbnails) {
+  if (use_thumbnails) {
 
-      if (mouse_in_gantt_zone) {
-        long time = pixel_to_time (mouse_x);
-        int iter  = trace_data_search_iteration (&trace[tr], time);
+    if (mouse_in_gantt_zone) {
+      long time = pixel_to_time (mouse_x);
+      int iter  = trace_data_search_iteration (&trace[tr], time);
 
-        if (iter != -1 && iter != displayed_iter[tr]) {
-          displayed_iter[tr] = iter;
-          // if (thumb_tex != NULL)
-          tex[tr] = thumb_tex[iter];
-        }
+      if (iter != -1 && iter != displayed_iter[tr]) {
+        displayed_iter[tr] = iter;
+        // if (thumb_tex != NULL)
+        tex[tr] = thumb_tex[iter];
       }
     }
-
-    if (tex[tr] != NULL)
-      SDL_RenderCopy (renderer, tex[tr], NULL, &trace_display_info[tr].mosaic);
   }
+
+  if (tex[tr] != NULL)
+    SDL_RenderCopy (renderer, tex[tr], NULL, &trace_display_info[tr].mosaic);
+
 #else
 #error Obsolete code needs to be fixed!
   if (use_thumbnails) {
@@ -796,19 +836,63 @@ static void set_tiles_background (void)
       // TODO; display black square
     }
   }
-
 #endif
+}
+
+static void display_gantt_background (trace_t *tr, int _t, int first_it)
+{
+  display_tab (_t);
+
+  // Display iterations' background and number
+  for (unsigned it = first_it;
+       (it < tr->nb_iterations) && (iteration_start_time (tr, it) < end_time);
+       it++) {
+    SDL_Rect r;
+
+    r.x = time_to_pixel (iteration_start_time (tr, it));
+    r.y = trace_display_info[_t].gantt.y;
+    r.w = time_to_pixel (iteration_end_time (tr, it)) - r.x + 1;
+    r.h = trace_display_info[_t].gantt.h;
+
+    // Background of iterations is black
+    SDL_SetRenderDrawColor (renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect (renderer, &r);
+
+    if (trace_data_align_mode && tr->iteration[it].gap > 0) {
+      SDL_Rect gap;
+
+      gap.x =
+          time_to_pixel (iteration_end_time (tr, it) - tr->iteration[it].gap);
+      gap.y = r.y;
+      gap.w = r.x + r.w - gap.x;
+      gap.h = r.h;
+
+      SDL_SetRenderDrawColor (renderer, 0, 90, 0, 255);
+      SDL_RenderFillRect (renderer, &gap);
+    }
+
+    display_iter_number (it + 1,
+                         trace_display_info[_t].gantt.y +
+                             trace_display_info[_t].gantt.h + 1,
+                         r.x, r.w);
+  }
+
+  // Draw the separation lines
+  {
+    SDL_Rect dst = {LEFT_MARGIN,
+                    trace_display_info[_t].gantt.y + CPU_ROW_HEIGHT - 2,
+                    GANTT_WIDTH, 2};
+
+    for (int c = 0; c < tr->nb_cores; c++) {
+      SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL, &dst);
+      dst.y += CPU_ROW_HEIGHT;
+    }
+  }
 }
 
 static void trace_graphics_display (void)
 {
   trace_task_t *selected_task = NULL;
-  trace_task_t *to_be_emphasized[MAX_TRACES][max_cores];
-  SDL_Rect target_tile_rect;
-  int target_tile              = 0;
-  trace_task_t *selected_first = NULL;
-  int selected_cpu             = 0;
-  int selected_trace           = 0;
 
   SDL_RenderClear (renderer);
 
@@ -823,83 +907,61 @@ static void trace_graphics_display (void)
 
   display_misc_status ();
 
-  set_tiles_background ();
-
   // Draw the text indicating CPU numbers
   display_text ();
 
-  // Set clipping region
-  {
-    SDL_Rect clip = trace_display_info[0].gantt;
-
-    // We enlarge the clipping area along the y-axis to enable display of
-    // iteration numbers
-    clip.y = 0;
-    clip.h = WINDOW_HEIGHT;
-
-    SDL_RenderSetClipRect (renderer, &clip);
-  }
-
   for (int _t = 0; _t < nb_traces; _t++) {
-
     trace_t *const tr       = trace + _t;
     const unsigned first_it = trace_ctrl[_t].first_displayed_iter - 1;
+    trace_task_t *to_be_emphasized[max_cores];
+    SDL_Rect target_tile_rect;
+    int target_tile              = 0;
+    trace_task_t *selected_first = NULL;
+    int selected_cpu             = 0;
+    unsigned wh                  = trace_display_info[_t].gantt.y + Y_MARGIN;
 
-    display_tab (_t);
+    bzero (to_be_emphasized, max_cores * sizeof (trace_task_t *));
 
-    // Display iterations' background and number
-    for (unsigned it = first_it;
-         (it < tr->nb_iterations) && (iteration_start_time (tr, it) < end_time);
-         it++) {
-      SDL_Rect r;
+    // Set clipping region
+    {
+      SDL_Rect clip = trace_display_info[0].gantt;
 
-      r.x = time_to_pixel (iteration_start_time (tr, it));
-      r.y = trace_display_info[_t].gantt.y;
-      r.w = time_to_pixel (iteration_end_time (tr, it)) - r.x + 1;
-      r.h = trace_display_info[_t].gantt.h;
+      // We enlarge the clipping area along the y-axis to enable display of
+      // iteration numbers
+      clip.y = 0;
+      clip.h = WINDOW_HEIGHT;
 
-      // Background of iterations is black
-      SDL_SetRenderDrawColor (renderer, 0, 0, 0, 255);
-      SDL_RenderFillRect (renderer, &r);
-
-      if (trace_data_align_mode && tr->iteration[it].gap > 0) {
-        SDL_Rect gap;
-
-        gap.x =
-            time_to_pixel (iteration_end_time (tr, it) - tr->iteration[it].gap);
-        gap.y = r.y;
-        gap.w = r.x + r.w - gap.x;
-        gap.h = r.h;
-
-        SDL_SetRenderDrawColor (renderer, 0, 90, 0, 255);
-        SDL_RenderFillRect (renderer, &gap);
-      }
-
-      display_iter_number (it + 1,
-                           trace_display_info[_t].gantt.y +
-                               trace_display_info[_t].gantt.h + 1,
-                           r.x, r.w);
+      SDL_RenderSetClipRect (renderer, &clip);
     }
 
-    // Draw the separation lines
-    {
-      SDL_Rect dst = {LEFT_MARGIN,
-                      trace_display_info[_t].gantt.y + CPU_ROW_HEIGHT - 2,
-                      GANTT_WIDTH, 2};
+    display_gantt_background (tr, _t, first_it);
 
-      for (int c = 0; c < tr->nb_cores; c++) {
+    int mx        = mouse_x;
+    int my        = mouse_y;
+    int in_mosaic = 0;
 
-        SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL, &dst);
-        dst.y += CPU_ROW_HEIGHT;
+    if (mouse_in_gantt_zone) {
+      if (horiz_mode && point_inside_gantt (1 - _t, mx, my)) {
+        my = get_y_mouse_sibbling ();
+        mx = -1;
+      }
+    } else {
+      if (point_inside_mosaic (_t, mouse_x, mouse_y)) {
+        // Mouse is over our tile mosaic
+        in_mosaic = 1;
+      } else if ((nb_traces > 1) &&
+                 point_inside_mosaic (1 - _t, mouse_x, mouse_y)) {
+        // Mouse is over the other tile mosaic
+        in_mosaic = 1;
+        mx        = trace_display_info[_t].mosaic.x +
+             (mouse_x - trace_display_info[1 - _t].mosaic.x);
+        my = trace_display_info[_t].mosaic.y +
+             (mouse_y - trace_display_info[1 - _t].mosaic.y);
       }
     }
 
     // We go through the range of iterations and we display tasks & associated
     // tiles
-    bzero (to_be_emphasized[_t], max_cores * sizeof (trace_task_t *));
-
-    unsigned wh = trace_display_info[_t].gantt.y + Y_MARGIN;
-
     if (first_it < tr->nb_iterations)
       for (int c = 0; c < tr->nb_cores; c++) {
 
@@ -922,24 +984,25 @@ static void trace_graphics_display (void)
             // Ok, this task should appear on the screen
             SDL_Rect dst;
 
+            // Project the task in the Gantt chart
             dst.x = time_to_pixel (task_start_time (tr, t));
             dst.y = wh;
             dst.w = time_to_pixel (task_end_time (tr, t)) - dst.x + 1;
             dst.h = TASK_HEIGHT;
 
-            if (horiz_mode && mouse_in_gantt_zone && dst.y <= mouse_y &&
-                mouse_y < dst.y + dst.h) {
-              if (selected_first == NULL) {
-                selected_first = first;
-                selected_cpu   = c;
-                selected_trace = _t;
-              }
-            }
             // Check if mouse is within the bounds of the gantt zone
             if (mouse_in_gantt_zone) {
-              if (dst.x <= mouse_x && mouse_x < dst.x + dst.w) {
+
+              if (horiz_mode && point_in_yrange (&dst, my)) {
+                if (selected_first == NULL) {
+                  selected_first = first;
+                  selected_cpu   = c;
+                }
+              }
+
+              if (point_in_xrange (&dst, mx)) {
                 // vertical line crosses the task
-                if (dst.y <= mouse_y && mouse_y < dst.y + dst.h) {
+                if (point_in_yrange (&dst, my)) {
 
                   selected_task = t;
                   // The task is under the mouse cursor: display it a little
@@ -951,17 +1014,17 @@ static void trace_graphics_display (void)
                 }
 
                 // postpone display of corresponding tile
-                to_be_emphasized[_t][c] = t;
+                to_be_emphasized[c] = t;
               }
 
               SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL, &dst);
 
-            } else if (mouse_inside_mosaic (_t, mouse_x, mouse_y)) {
+            } else if (in_mosaic) {
               SDL_Rect r;
 
               get_tile_rect (tr, t, &r);
 
-              if (point_in_rect (&r, mouse_x, mouse_y)) {
+              if (point_in_rect (&r, mx, my)) {
                 if (!target_tile) {
                   target_tile      = 1;
                   target_tile_rect = r;
@@ -976,47 +1039,42 @@ static void trace_graphics_display (void)
 
         wh += CPU_ROW_HEIGHT;
       }
-  }
 
-  // Disable clipping region
-  SDL_RenderSetClipRect (renderer, NULL);
+    // Disable clipping region
+    SDL_RenderSetClipRect (renderer, NULL);
 
-  if (horiz_mode) {
+    display_tile_background (_t);
+
     if (target_tile)
-      // Disply mouse-selected tile in white color
+      // Display mouse-selected tile in white color
       SDL_RenderCopy (renderer, square_tex[MAX_COLORS], NULL,
                       &target_tile_rect);
-    else if (selected_first != NULL)
-      // We follow the list of tasks, starting from this first task
-      list_for_each_entry_from (trace_task_t, t,
-                                trace[selected_trace].per_cpu + selected_cpu,
-                                selected_first, cpu_chain)
-      {
-        if (task_end_time (&trace[selected_trace], t) < start_time)
-          continue;
+    else if (horiz_mode) {
+      if (selected_first != NULL)
+        // We follow the list of tasks, starting from this first task
+        list_for_each_entry_from (trace_task_t, t, tr->per_cpu + selected_cpu,
+                                  selected_first, cpu_chain)
+        {
+          if (task_end_time (tr, t) < start_time)
+            continue;
 
-        // We stop if we encounter a task belonging to a greater iteration
-        if (task_start_time (&trace[selected_trace], t) > end_time)
-          break;
-        // Ok, this task should have its tile displayed
-        show_tile (&trace[selected_trace], t, selected_cpu,
-                   (t == selected_task));
-      }
-  } else {
-    if (target_tile)
-      // Disply mouse-selected tile in white color
-      SDL_RenderCopy (renderer, square_tex[MAX_COLORS], NULL,
-                      &target_tile_rect);
-    else
+          // We stop if we encounter a task belonging to a greater iteration
+          if (task_start_time (tr, t) > end_time)
+            break;
+
+          // Ok, this task should have its tile displayed
+          show_tile (tr, t, selected_cpu, (t == selected_task));
+        }
+    } else {
       // Display tiles corresponding to tasks intersecting with mouse "iso x"
       // axis
-      for (int _t = 0; _t < nb_traces; _t++) {
-        for (int c = 0; c < trace[_t].nb_cores; c++)
-          if (to_be_emphasized[_t][c] != NULL)
-            show_tile (&trace[_t], to_be_emphasized[_t][c], c,
-                       (to_be_emphasized[_t][c] == selected_task));
-      }
-  }
+      for (int c = 0; c < tr->nb_cores; c++)
+        if (to_be_emphasized[c] != NULL)
+          show_tile (tr, to_be_emphasized[c], c,
+                     (to_be_emphasized[c] == selected_task));
+    }
+
+  } // for (_t)
 
   // Mouse
   display_mouse_selection (selected_task);
@@ -1254,15 +1312,13 @@ void trace_graphics_mouse_moved (int x, int y)
   mouse_x = x;
   mouse_y = y;
 
-  if (mouse_inside_gantts (x, y)) {
+  if (point_inside_gantts (x, y)) {
     mouse_in_gantt_zone = 1;
   } else {
     mouse_in_gantt_zone = 0;
 
     if (mouse_down) {
-      if (y < trace_display_info[0].gantt.y ||
-          y > (trace_display_info[nb_traces - 1].gantt.y +
-               trace_display_info[nb_traces - 1].gantt.h - 1))
+      if (!point_in_yrange (&gantts_bounding_box, y))
         mouse_down = 0;
       else if (x < trace_display_info[0].gantt.x)
         x = trace_display_info[0].gantt.x;
@@ -1282,7 +1338,7 @@ void trace_graphics_mouse_moved (int x, int y)
 
 void trace_graphics_mouse_down (int x, int y)
 {
-  if (mouse_inside_gantts (x, y)) {
+  if (point_inside_gantts (x, y)) {
     mouse_orig_x = x;
 
     mouse_selection.x = x;
