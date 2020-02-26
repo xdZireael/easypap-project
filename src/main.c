@@ -64,6 +64,12 @@ unsigned easypap_requested_number_of_threads (void)
     return atoi (str);
 }
 
+char* easypap_omp_schedule (void)
+{
+   char *str = getenv ("OMP_SCHEDULE");
+  return (str == NULL) ? "" : str;
+}
+
 unsigned easypap_number_of_cores (void)
 {
   return nb_cores;
@@ -109,7 +115,7 @@ static void update_refresh_rate (int p)
 
   i_refresh_rate += p;
   refresh_rate = tab_refresh_rate[i_refresh_rate];
-  printf ("\nrefresh rate = %d \n", refresh_rate);
+  printf ("< Refresh rate set to: %d >\n", refresh_rate);
 }
 
 static void output_perf_numbers (long time_in_us, unsigned nb_iter)
@@ -118,19 +124,20 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
   struct utsname s;
 
   if (f == NULL)
-    exit_with_error ("Cannot open \"%s\" file (%s)", output_file, strerror (errno));
+    exit_with_error ("Cannot open \"%s\" file (%s)", output_file,
+                     strerror (errno));
 
   if (ftell (f) == 0) {
-    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "dim", "grain",
-             "threads", "kernel", "variant", "iterations", "label", "arg", "time");
+    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "dim", "grain",
+             "threads", "kernel", "variant", "iterations", "schedule", "label", "arg", "time");
   }
 
   if (uname (&s) < 0)
     exit_with_error ("uname failed (%s)", strerror (errno));
 
-  fprintf (f, "%s;%u;%u;%u;%s;%s;%u;%s;%s;%ld\n", s.nodename, DIM, GRAIN,
+  fprintf (f, "%s;%u;%u;%u;%s;%s;%u;%s;%s;%s;%ld\n", s.nodename, DIM, GRAIN,
            easypap_requested_number_of_threads (), kernel_name, variant_name,
-           nb_iter, (label ?: "unlabelled"), (draw_param ?: "none"), time_in_us);
+           nb_iter, easypap_omp_schedule(), (label ?: "unlabelled"), (draw_param ?: "none"), time_in_us);
 
   fclose (f);
 }
@@ -277,7 +284,7 @@ static void init_phases (void)
     PRINT_DEBUG ('i',
                  "Init phase 6: [no kernel-specific draw() hook defined]\n");
 
-  //img_data_replicate ();
+  // img_data_replicate ();
 
   if (opencl_used) {
     ocl_send_image (image);
@@ -349,6 +356,9 @@ int main (int argc, char **argv)
               case SDLK_UP:
                 update_refresh_rate (1);
                 break;
+              case SDLK_h:
+                gmonitor_toggle_heat_mode ();
+                break;
               default:;
               }
               break;
@@ -375,7 +385,7 @@ int main (int argc, char **argv)
 
       if (!stable) {
         if (quit) {
-          PRINT_MASTER ("\nComputation aborted at iteration %d\n", iterations);
+          PRINT_MASTER ("Computation aborted at iteration %d\n", iterations);
         } else {
           if (max_iter && iterations >= max_iter) {
             PRINT_MASTER ("Computation stopped after %d iterations\n",
@@ -574,8 +584,7 @@ static void usage (int val)
            "\t-r\t| --refresh-rate <N>\t: display only 1/Nth of images\n");
   fprintf (stderr, "\t-s\t| --size <DIM>\t\t: use image of size DIM x DIM\n");
   fprintf (stderr, "\t-th\t| --thumbs\t\t: generate thumbnails\n");
-  fprintf (stderr,
-           "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
+  fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
   fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
   fprintf (stderr,
            "\t-v\t| --variant <name>\t: select variant <name> of kernel\n");
