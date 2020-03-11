@@ -11,11 +11,14 @@
 
 #include <SDL_image.h>
 #include <SDL_opengl.h>
+#include <SDL_ttf.h>
 #include <assert.h>
 #include <sys/mman.h>
 
 unsigned WIN_WIDTH  = 1024;
 unsigned WIN_HEIGHT = 1024;
+
+#define FONT_HEIGHT 24
 
 static SDL_Surface *temporary_surface = NULL;
 
@@ -26,6 +29,76 @@ static SDL_Texture *texture    = NULL;
 
 #define THUMBNAILS_SIZE 512
 static SDL_Surface *mini_surface = NULL;
+
+static SDL_Texture *digit_tex[10] = {NULL};
+static unsigned digit_tex_width[10];
+static unsigned digit_tex_height;
+
+static unsigned display_iter = 0;
+
+static void create_digit_textures (TTF_Font *font)
+{
+  SDL_Color white_color = {255, 255, 255, 255};
+
+  for (int c = 0; c < 10; c++) {
+    char msg[32];
+    snprintf (msg, 32, "%d", c);
+
+    SDL_Surface *s = TTF_RenderText_Blended (font, msg, white_color);
+    if (s == NULL)
+      exit_with_error ("TTF_RenderText_Solid failed: %s", SDL_GetError ());
+
+    digit_tex_width[c] = s->w;
+    digit_tex_height   = s->h;
+    digit_tex[c]       = SDL_CreateTextureFromSurface (ren, s);
+
+    SDL_FreeSurface (s);
+  }
+}
+
+static void graphics_display_iteration_number (unsigned iter)
+{
+  unsigned digits[10];
+  unsigned nbd = 0, width;
+  SDL_Rect dst;
+  unsigned x_offset = 15, y_offset = 15;
+
+  do {
+    digits[nbd] = iter % 10;
+    iter /= 10;
+    nbd++;
+  } while (iter > 0);
+
+  width = nbd * digit_tex_width[0]; // approx
+
+  // background rectangle
+  SDL_Rect r;
+  r.x = 10;
+  r.y = 10;
+  r.w = width + 10;
+  r.h = FONT_HEIGHT + 10;
+
+  SDL_SetRenderDrawColor (ren, 0, 0, 0, 80);
+  SDL_RenderFillRect (ren, &r);
+
+  dst.x = x_offset;
+  dst.y = y_offset;
+  dst.h = digit_tex_height;
+
+  for (int d = nbd - 1; d >= 0; d--) {
+    unsigned the_digit = digits[d];
+    dst.w              = digit_tex_width[the_digit];
+
+    SDL_RenderCopy (ren, digit_tex[the_digit], NULL, &dst);
+
+    dst.x += digit_tex_width[the_digit];
+  }
+}
+
+void graphics_toggle_display_iteration_number (void)
+{
+  display_iter ^= 1;
+}
 
 static void graphics_create_surface (void)
 {
@@ -151,9 +224,30 @@ void graphics_init (void)
     if (ren == NULL)
       exit_with_error ("SDL_CreateRenderer failed (%s)", SDL_GetError ());
 
+    SDL_SetRenderDrawBlendMode (ren, SDL_BLENDMODE_BLEND);
+
     SDL_RendererInfo info;
     SDL_GetRendererInfo (ren, &info);
     PRINT_DEBUG ('g', "Main window renderer used: [%s]\n", info.name);
+
+    // Digit textures
+    {
+      TTF_Font *font = NULL;
+
+      if (TTF_Init () < 0)
+        exit_with_error ("TTF_Init");
+
+      font = TTF_OpenFont ("fonts/FreeSansBold.ttf", FONT_HEIGHT - 4);
+
+      if (font == NULL)
+        exit_with_error ("TTF_OpenFont: %s", TTF_GetError ());
+
+      create_digit_textures (font);
+
+      TTF_CloseFont (font);
+
+      TTF_Quit ();
+    }
   }
 
   if (easypap_image_file != NULL)
@@ -249,13 +343,16 @@ void graphics_render_image (void)
   SDL_RenderCopy (ren, texture, &src, &dst);
 }
 
-void graphics_refresh (void)
+void graphics_refresh (unsigned iter)
 {
   // On efface la scène dans le moteur de rendu (inutile !)
   SDL_RenderClear (ren);
 
   // On réaffiche l'image
   graphics_render_image ();
+
+  if (display_iter)
+    graphics_display_iteration_number (iter);
 
   // Met à jour l'affichage sur écran
   SDL_RenderPresent (ren);

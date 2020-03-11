@@ -79,7 +79,7 @@ void gmonitor_init (int x, int y)
     exit_with_error ("SDL_CreateWindow failed (%s)", SDL_GetError ());
 
   // Initialisation du moteur de rendu
-  ren = SDL_CreateRenderer (win, -1, SDL_RENDERER_ACCELERATED);
+  ren = SDL_CreateRenderer (win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (ren == NULL)
     exit_with_error ("SDL_CreateRenderer failed (%s)", SDL_GetError ());
 
@@ -219,7 +219,7 @@ void gmonitor_toggle_heat_mode (void)
 #ifdef LOAD_INTENSITY
   if (do_gmonitor) {
     heat_mode ^= 1;
-    printf ("< Heat mode set to: %s >\n", heat_mode ? "ON" : "OFF");
+    printf ("< Heatmap mode set to: %s >\n", heat_mode ? "ON" : "OFF");
   }
 #endif
 }

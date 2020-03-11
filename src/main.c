@@ -64,9 +64,9 @@ unsigned easypap_requested_number_of_threads (void)
     return atoi (str);
 }
 
-char* easypap_omp_schedule (void)
+char *easypap_omp_schedule (void)
 {
-   char *str = getenv ("OMP_SCHEDULE");
+  char *str = getenv ("OMP_SCHEDULE");
   return (str == NULL) ? "" : str;
 }
 
@@ -129,7 +129,8 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
 
   if (ftell (f) == 0) {
     fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "dim", "grain",
-             "threads", "kernel", "variant", "iterations", "schedule", "label", "arg", "time");
+             "threads", "kernel", "variant", "iterations", "schedule", "label",
+             "arg", "time");
   }
 
   if (uname (&s) < 0)
@@ -137,7 +138,8 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
 
   fprintf (f, "%s;%u;%u;%u;%s;%s;%u;%s;%s;%s;%ld\n", s.nodename, DIM, GRAIN,
            easypap_requested_number_of_threads (), kernel_name, variant_name,
-           nb_iter, easypap_omp_schedule(), (label ?: "unlabelled"), (draw_param ?: "none"), time_in_us);
+           nb_iter, easypap_omp_schedule (), (label ?: "unlabelled"),
+           (draw_param ?: "none"), time_in_us);
 
   fclose (f);
 }
@@ -280,11 +282,14 @@ static void init_phases (void)
   if (the_draw != NULL) {
     the_draw (draw_param);
     PRINT_DEBUG ('i', "Init phase 6: kernel-specific draw() hook called\n");
-  } else
+  } else {
+#ifndef ENABLE_SDL
+    if (!do_first_touch || (the_first_touch == NULL))
+      img_data_replicate (); // touch the data
+#endif
     PRINT_DEBUG ('i',
                  "Init phase 6: [no kernel-specific draw() hook defined]\n");
-
-  // img_data_replicate ();
+  }
 
   if (opencl_used) {
     ocl_send_image (image);
@@ -313,7 +318,7 @@ int main (int argc, char **argv)
       the_refresh_img ();
 
     if (do_display)
-      graphics_refresh ();
+      graphics_refresh (iterations);
 
     if (refresh_rate == -1)
       refresh_rate = 1;
@@ -345,10 +350,11 @@ int main (int argc, char **argv)
               // Si l'utilisateur appuie sur une touche
               switch (evt.key.keysym.sym) {
               case SDLK_ESCAPE:
+              case SDLK_q:
                 quit = 1;
                 break;
               case SDLK_SPACE:
-                step = 1 - step;
+                step ^= 1;
                 break;
               case SDLK_DOWN:
                 update_refresh_rate (-1);
@@ -358,6 +364,9 @@ int main (int argc, char **argv)
                 break;
               case SDLK_h:
                 gmonitor_toggle_heat_mode ();
+                break;
+              case SDLK_i:
+                graphics_toggle_display_iteration_number ();
                 break;
               default:;
               }
@@ -427,7 +436,7 @@ int main (int argc, char **argv)
           }
 
           if (do_display)
-            graphics_refresh ();
+            graphics_refresh (iterations);
         }
       }
       if (stable && quit_when_done)
