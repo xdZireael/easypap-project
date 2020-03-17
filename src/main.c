@@ -13,15 +13,11 @@
 #include <mpi.h>
 #endif
 
+#include "easypap.h"
 #include "constants.h"
 #include "cpustat.h"
-#include "debug.h"
-#include "error.h"
-#include "global.h"
 #include "graphics.h"
 #include "hooks.h"
-#include "monitoring.h"
-#include "ocl.h"
 #include "trace_record.h"
 
 #define DEFAULT_GRAIN 8
@@ -304,6 +300,8 @@ int main (int argc, char **argv)
 
   filter_args (&argc, argv);
 
+  arch_flags_print ();
+  
   init_phases ();
 
 #ifdef ENABLE_SDL
