@@ -173,10 +173,17 @@ static void graphics_image_clean (void)
 
 void graphics_init (void)
 {
-  Uint32 render_flags =
-      SDL_RENDERER_ACCELERATED | (vsync ? SDL_RENDERER_PRESENTVSYNC : 0);
+  Uint32 render_flags = 0;
 
-  // Initialisation de SDL
+  if (soft_rendering)
+    render_flags = SDL_RENDERER_SOFTWARE;
+  else
+    render_flags = SDL_RENDERER_ACCELERATED;
+
+  if (vsync && !soft_rendering)
+    render_flags |= SDL_RENDERER_PRESENTVSYNC;
+
+    // Initialisation de SDL
   if (easypap_image_file != NULL || do_display)
     if (SDL_Init (SDL_INIT_VIDEO) != 0)
       exit_with_error ("SDL_Init failed (%s)", SDL_GetError ());

@@ -13,19 +13,20 @@
 #include <mpi.h>
 #endif
 
-#include "easypap.h"
 #include "constants.h"
 #include "cpustat.h"
+#include "easypap.h"
 #include "graphics.h"
 #include "hooks.h"
 #include "trace_record.h"
 
 #define DEFAULT_GRAIN 8
 
-int max_iter          = 0;
-unsigned refresh_rate = -1;
-unsigned do_display   = 1;
-unsigned vsync        = 1;
+int max_iter            = 0;
+unsigned refresh_rate   = -1;
+unsigned do_display     = 1;
+unsigned vsync          = 1;
+unsigned soft_rendering = 0;
 
 static char *progname    = NULL;
 char *variant_name       = NULL;
@@ -301,7 +302,7 @@ int main (int argc, char **argv)
   filter_args (&argc, argv);
 
   arch_flags_print ();
-  
+
   init_phases ();
 
 #ifdef ENABLE_SDL
@@ -590,6 +591,7 @@ static void usage (int val)
   fprintf (stderr,
            "\t-r\t| --refresh-rate <N>\t: display only 1/Nth of images\n");
   fprintf (stderr, "\t-s\t| --size <DIM>\t\t: use image of size DIM x DIM\n");
+  fprintf (stderr, "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
   fprintf (stderr, "\t-th\t| --thumbs\t\t: generate thumbnails\n");
   fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
   fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
@@ -618,6 +620,8 @@ static void filter_args (int *argc, char *argv[])
       quit_when_done = 1;
     } else if (!strcmp (*argv, "--help") || !strcmp (*argv, "-h")) {
       usage (0);
+    } else if (!strcmp (*argv, "--soft-rendering") || !strcmp (*argv, "-sr")) {
+      soft_rendering = 1;
     } else if (!strcmp (*argv, "--first-touch") || !strcmp (*argv, "-ft")) {
       do_first_touch = 1;
     } else if (!strcmp (*argv, "--monitoring") || !strcmp (*argv, "-m")) {
