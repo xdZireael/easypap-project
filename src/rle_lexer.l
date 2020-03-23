@@ -79,6 +79,8 @@ static void complain (char *s)
 
 %}
 
+%option noyywrap
+
 %x XINPUT
 %x BETWEEN
 %x YINPUT

@@ -57,11 +57,11 @@ CFLAGS		+= -I./include -I./traces/include
 LDLIBS		+= -lm
 
 ifeq ($(ARCH),DARWIN)
-LDLIBS		+= -framework OpenGL -ll
+LDLIBS		+= -framework OpenGL
 else
 CFLAGS		+= -rdynamic
 LDFLAGS		+= -export-dynamic
-LDLIBS		+= -lGL -lpthread -ldl -lfl
+LDLIBS		+= -lGL -lpthread -ldl
 endif
 
 # Vectorization
