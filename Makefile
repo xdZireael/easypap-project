@@ -10,7 +10,7 @@ default: $(PROGRAM)
 ENABLE_SDL			= 1
 ENABLE_MONITORING	= 1
 ENABLE_VECTO		= 1
-ENABLE_FUT			= 1
+ENABLE_TRACE		= 1
 ENABLE_MPI			= 1
 
 ####################################
@@ -25,7 +25,11 @@ endif
 
 KERNELS		:= $(wildcard kernel/c/*.c)
 
-T_SOURCE	:= traces/src/trace_common.c traces/src/trace_record.c
+T_SOURCE	:= traces/src/trace_common.c
+
+ifdef ENABLE_TRACE
+T_SOURCE	+= traces/src/trace_record.c
+endif
 
 L_SOURCE	:= $(wildcard src/*.l)
 L_GEN		:= $(L_SOURCE:src/%.l=obj/%.c)
@@ -90,8 +94,9 @@ CFLAGS		+= -DENABLE_SDL
 PACKAGES	+= SDL2_image SDL2_ttf
 endif
 
-ifdef ENABLE_FUT
-CFLAGS		+= -DENABLE_FUT
+ifdef ENABLE_TRACE
+# Right now, only fxt is supported
+CFLAGS		+= -DENABLE_TRACE -DENABLE_FUT
 PACKAGES	+= fxt
 endif
 

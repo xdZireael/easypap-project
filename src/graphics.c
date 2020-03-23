@@ -399,9 +399,9 @@ void graphics_save_thumbnail (unsigned iteration)
                      SDL_GetError ());
 }
 
-int graphics_get_event (SDL_Event *event, int pause)
+int graphics_get_event (SDL_Event *event, int blocking)
 {
-  if (pause)
+  if (blocking)
     return SDL_WaitEvent (event);
   else
     return SDL_PollEvent (event);

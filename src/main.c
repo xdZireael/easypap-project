@@ -228,6 +228,7 @@ static void init_phases (void)
              DIM, TILE_SIZE);
 
 #ifdef ENABLE_MONITORING
+#ifdef ENABLE_TRACE
   if (do_trace) {
     char filename[1024];
 
@@ -241,6 +242,7 @@ static void init_phases (void)
     trace_record_init (filename, easypap_requested_number_of_threads (), DIM,
                        label);
   }
+#endif
 #endif
 
   if (opencl_used) {
@@ -336,7 +338,7 @@ int main (int argc, char **argv)
         do {
           SDL_Event evt;
 
-          r = graphics_get_event (&evt, step);
+          r = graphics_get_event (&evt, step | stable);
 
           if (r > 0)
             switch (evt.type) {
@@ -449,10 +451,8 @@ int main (int argc, char **argv)
     struct timeval t1, t2;
     int n;
 
-#ifdef ENABLE_SDL
     if (do_trace | do_thumbs)
       refresh_rate = 1;
-#endif
 
     if (refresh_rate == -1) {
       if (max_iter)
@@ -533,8 +533,10 @@ int main (int argc, char **argv)
 #endif
 
 #ifdef ENABLE_MONITORING
+#ifdef ENABLE_TRACE
   if (do_trace)
     trace_record_finalize ();
+#endif
 #endif
 
   if (the_finalize != NULL)
@@ -633,7 +635,13 @@ static void filter_args (int *argc, char *argv[])
       do_gmonitor = 1;
 #endif
     } else if (!strcmp (*argv, "--trace") || !strcmp (*argv, "-t")) {
+#ifndef ENABLE_TRACE
+      fprintf (
+          stderr,
+          "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
+#else
       do_trace = 1;
+#endif
     } else if (!strcmp (*argv, "--thumbs") || !strcmp (*argv, "-th")) {
 #ifndef ENABLE_SDL
       fprintf (stderr, "Warning: cannot generate thumbnails when ENABLE_SDL is "

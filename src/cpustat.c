@@ -311,7 +311,7 @@ long cpustat_finish_work (long now, int who)
   cpu_stats[who].cumulated_work += duration;
 
   //PRINT_DEBUG ('m', "CPU %d completes its tile (worked during %ld)\n", who,
-  //             duration;
+  //             duration);
   return duration;
 }
 
