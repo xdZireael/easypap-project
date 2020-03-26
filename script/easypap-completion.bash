@@ -10,8 +10,11 @@ unset _dir
 _easypap_completions()
 {
     local LONG_OPTIONS=("--help" "--load-image" "--size" "--kernel" "--variant" "--monitoring" "--thumbnails"
-                        "--trace" "--no-display" "--iterations" "--grain" "--tile-size" "--arg" "--first-touch" "--label" "--mpirun")
-    local SHORT_OPTIONS=("-h" "-l" "-s" "-k" "-v" "-m" "-th" "-t" "-n" "-i" "-g" "-ts" "-a" "-ft" "-lb" "-mpi")
+                        "--trace" "--no-display" "--iterations" "--grain" "--tile-size" "--arg" "--first-touch"
+                        "--label" "--mpirun" "--soft-rendering" "--show-ocl")
+    local SHORT_OPTIONS=("-h" "-l" "-s" "-k" "-v" "-m" "-th"
+                         "-t" "-n" "-i" "-g" "-ts" "-a" "-ft"
+                         "-lb" "-mpi" "-sr" "-so")
     local NB_OPTIONS=${#LONG_OPTIONS[@]}
 
     local exclude_s=(1) # size excludes load-image
@@ -50,6 +53,14 @@ _easypap_completions()
                     COMPREPLY=($(compgen -o plusdirs -f -X '!*.png' -- $cur))
                 fi
                 ;;
+            -a|--arg)
+                compopt -o filenames
+                if [[ -z "$cur" ]]; then
+                    COMPREPLY=($(compgen -f -- "data/"))
+                else
+                    COMPREPLY=($(compgen -f -- "$cur"))
+                fi
+                ;;
             -k|--kernel)
                 _easypap_kernels
                 COMPREPLY=($(compgen -W "$kernels" $cur))
@@ -77,7 +88,7 @@ _easypap_completions()
                     COMPREPLY=("\"${MPIRUN_DEFAULT:-"-np 2"}\"")
                 fi
                 ;;
-            -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|-ft|--first-touch|-du|--dump|-p|--pause)
+            -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|-ft|--first-touch|-du|--dump|-p|--pause|-sr|--soft-rendering|-so|--show-ocl)
                 # After options taking no argument, we can suggest another option
                 if [[ "$cur" =~ ^--.* ]]; then
                     _easypap_option_suggest "${LONG_OPTIONS[@]}"
@@ -86,7 +97,7 @@ _easypap_completions()
                 fi
                 ;;
             -*)
-                # After an option which requires one argument, we don't suggest anything
+                # For remaining options with one argument, we don't suggest anything
                 ;;
             *)
                 if [[ "$cur" =~ ^--.* ]]; then

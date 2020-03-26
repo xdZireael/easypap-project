@@ -48,6 +48,7 @@ static unsigned nb_cores                                   = 1;
 unsigned do_first_touch                                    = 0;
 static unsigned do_dump __attribute__ ((unused))           = 0;
 static unsigned do_thumbs __attribute__ ((unused))         = 0;
+static unsigned show_ocl_config                            = 0;
 
 static hwloc_topology_t topology;
 
@@ -246,7 +247,7 @@ static void init_phases (void)
 #endif
 
   if (opencl_used) {
-    ocl_init ();
+    ocl_init (show_ocl_config);
     ocl_alloc_buffers ();
   } else
     PRINT_DEBUG ('i', "Init phase 2: [OpenCL init not required]\n");
@@ -593,7 +594,10 @@ static void usage (int val)
   fprintf (stderr,
            "\t-r\t| --refresh-rate <N>\t: display only 1/Nth of images\n");
   fprintf (stderr, "\t-s\t| --size <DIM>\t\t: use image of size DIM x DIM\n");
-  fprintf (stderr, "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
+  fprintf (stderr,
+           "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
+  fprintf (stderr,
+           "\t-so\t| --show-ocl\t: display OpenCL platform and devices\n");
   fprintf (stderr, "\t-th\t| --thumbs\t\t: generate thumbnails\n");
   fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
   fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
@@ -624,6 +628,9 @@ static void filter_args (int *argc, char *argv[])
       usage (0);
     } else if (!strcmp (*argv, "--soft-rendering") || !strcmp (*argv, "-sr")) {
       soft_rendering = 1;
+    } else if (!strcmp (*argv, "--show-ocl") || !strcmp (*argv, "-so")) {
+      show_ocl_config = 1;
+      opencl_used = 1;
     } else if (!strcmp (*argv, "--first-touch") || !strcmp (*argv, "-ft")) {
       do_first_touch = 1;
     } else if (!strcmp (*argv, "--monitoring") || !strcmp (*argv, "-m")) {
@@ -640,7 +647,7 @@ static void filter_args (int *argc, char *argv[])
           stderr,
           "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
 #else
-      do_trace = 1;
+      do_trace    = 1;
 #endif
     } else if (!strcmp (*argv, "--thumbs") || !strcmp (*argv, "-th")) {
 #ifndef ENABLE_SDL

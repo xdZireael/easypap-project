@@ -18,7 +18,7 @@
 
 #include "error.h"
 
-void ocl_init (void);
+void ocl_init (int show_config_and_quit);
 void ocl_alloc_buffers (void);
 void ocl_map_textures (GLuint texid);
 void ocl_send_image (unsigned *image);
