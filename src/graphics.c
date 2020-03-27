@@ -280,6 +280,8 @@ void graphics_init (void)
       ren, SDL_PIXELFORMAT_RGBA8888, // SDL_PIXELFORMAT_RGBA32,
       SDL_TEXTUREACCESS_STATIC, DIM, DIM);
 
+  SDL_SetTextureBlendMode (texture, SDL_BLENDMODE_BLEND);
+
   PRINT_DEBUG ('i', "Init phase 1: SDL initialized (DIM = %d)\n", DIM);
 }
 
