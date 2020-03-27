@@ -597,7 +597,7 @@ static void usage (int val)
   fprintf (stderr,
            "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
   fprintf (stderr,
-           "\t-so\t| --show-ocl\t: display OpenCL platform and devices\n");
+           "\t-so\t| --show-ocl\t\t: display OpenCL platform and devices\n");
   fprintf (stderr, "\t-th\t| --thumbs\t\t: generate thumbnails\n");
   fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
   fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
