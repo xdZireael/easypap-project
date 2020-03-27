@@ -10,7 +10,7 @@ static unsigned long int max_grains;
 
 #define table(i, j) TABLE[(i)*DIM + (j)]
 
-#define RGB(r, v, b) (((r) << 24 | (v) << 16 | (b) << 8))
+#define RGB(r, v, b) (((r) << 24 | (v) << 16 | (b) << 8) | 255)
 
 void sable_init ()
 {
