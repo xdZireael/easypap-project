@@ -171,6 +171,8 @@ static void graphics_image_clean (void)
         cur_img (i, j) |= 0xFF;
 }
 
+#include "ee.h"
+
 void graphics_init (void)
 {
   Uint32 render_flags = 0;
@@ -183,7 +185,7 @@ void graphics_init (void)
   if (vsync && !soft_rendering)
     render_flags |= SDL_RENDERER_PRESENTVSYNC;
 
-    // Initialisation de SDL
+  // Initialisation de SDL
   if (easypap_image_file != NULL || do_display)
     if (SDL_Init (SDL_INIT_VIDEO) != 0)
       exit_with_error ("SDL_Init failed (%s)", SDL_GetError ());
@@ -254,6 +256,13 @@ void graphics_init (void)
       TTF_CloseFont (font);
 
       TTF_Quit ();
+    }
+    __ees = SDL_CreateRGBSurface (0, __eew, __eeh, 32, 0xff000000, 0x00ff0000,
+                                  0x0000ff00, 0x000000ff);
+    if (__ees != NULL) {
+      memcpy (__ees->pixels, __ee, __eew * __eeh * sizeof (unsigned));
+      __eet = SDL_CreateTextureFromSurface (ren, __ees);
+      SDL_FreeSurface (__ees);
     }
   }
 
@@ -334,7 +343,6 @@ void graphics_render_image (void)
 
     glFinish ();
     ocl_update_texture ();
-
   } else
     SDL_UpdateTexture (texture, NULL, image, DIM * sizeof (Uint32));
 
@@ -363,6 +371,14 @@ void graphics_refresh (unsigned iter)
   if (display_iter)
     graphics_display_iteration_number (iter);
 
+  if (__eet) {
+    SDL_Rect dst;
+    dst.x = (WIN_WIDTH - __eew) / 2;
+    dst.y = (WIN_HEIGHT - __eeh) / 2;
+    dst.w = __eew;
+    dst.h = __eeh;
+    SDL_RenderCopy (ren, __eet, NULL, &dst);
+  }
   // Met à jour l'affichage sur écran
   SDL_RenderPresent (ren);
 }
