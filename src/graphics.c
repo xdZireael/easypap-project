@@ -14,6 +14,7 @@
 #include <SDL_ttf.h>
 #include <assert.h>
 #include <sys/mman.h>
+#include <time.h>
 
 unsigned WIN_WIDTH  = 1024;
 unsigned WIN_HEIGHT = 1024;
