@@ -8,17 +8,19 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-static unsigned couleur = 0xFFFF00FF; // Living cells have the yellow color
+static unsigned color = 0xFFFF00FF; // Living cells have the yellow color
 
-static unsigned *restrict _table = NULL, *restrict _alternate_table = NULL;
+typedef unsigned cell_t;
 
-static inline unsigned *table_cell (unsigned *restrict i, int y, int x)
+static cell_t *restrict _table = NULL, *restrict _alternate_table = NULL;
+
+static inline cell_t *table_cell (cell_t *restrict i, int y, int x)
 {
   return i + y * DIM + x;
 }
 
 // This kernel does not directly work on cur_img/next_img.
-// Instead, we use 2D arrays of boolean values (stored as unsigned integers)
+// Instead, we use 2D arrays of boolean values, not colors
 #define cur_table(y, x) (*table_cell (_table, (y), (x)))
 #define next_table(y, x) (*table_cell (_alternate_table, (y), (x)))
 
@@ -28,7 +30,7 @@ void life_init (void)
   // life_init may be (indirectly) called several times so we check if data were
   // already allocated
   if (_table == NULL) {
-    const unsigned size = DIM * DIM * sizeof (unsigned);
+    const unsigned size = DIM * DIM * sizeof (cell_t);
 
     PRINT_DEBUG ('u', "Memory footprint = 2 x %d bytes\n", size);
 
@@ -42,7 +44,7 @@ void life_init (void)
 
 void life_finalize (void)
 {
-  const unsigned size = DIM * DIM * sizeof (unsigned);
+  const unsigned size = DIM * DIM * sizeof (cell_t);
 
   munmap (_table, size);
   munmap (_alternate_table, size);
@@ -53,12 +55,12 @@ void life_refresh_img (void)
 {
   for (int i = 0; i < DIM; i++)
     for (int j = 0; j < DIM; j++)
-      cur_img (i, j) = cur_table (i, j) * couleur;
+      cur_img (i, j) = cur_table (i, j) * color;
 }
 
 static inline void swap_tables (void)
 {
-  unsigned *tmp = _table;
+  cell_t *tmp = _table;
 
   _table           = _alternate_table;
   _alternate_table = tmp;
@@ -68,7 +70,8 @@ static inline void swap_tables (void)
 
 static int compute_new_state (int y, int x)
 {
-  unsigned n      = 0;
+  unsigned n  = 0;
+  unsigned me = cur_table (y, x) != 0;
   unsigned change = 0;
 
   if (x > 0 && x < DIM - 1 && y > 0 && y < DIM - 1) {
@@ -77,20 +80,9 @@ static int compute_new_state (int y, int x)
       for (int j = x - 1; j <= x + 1; j++)
         n += cur_table (i, j);
 
-    if (cur_table (y, x) != 0) {
-      if (n == 3 || n == 4)
-        n = 1;
-      else {
-        n      = 0;
-        change = 1;
-      }
-    } else {
-      if (n == 3) {
-        n      = 1;
-        change = 1;
-      } else
-        n = 0;
-    }
+    n = (n == 3 + me) | (n == 3);
+    if (n != me)
+      change |= 1;
 
     next_table (y, x) = n;
   }
@@ -129,21 +121,7 @@ static int do_tile_reg (int x, int y, int width, int height)
 
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++)
-      if (j > 0 && j < DIM - 1 && i > 0 && i < DIM - 1) {
-
-        unsigned n  = 0;
-        unsigned me = cur_table (i, j) != 0;
-
-        for (int yloc = i - 1; yloc < i + 2; yloc++)
-          for (int xloc = j - 1; xloc < j + 2; xloc++)
-            n += cur_table (yloc, xloc);
-
-        n = (n == 3 + me) | (n == 3);
-        if (n != me)
-          change |= 1;
-
-        next_table (i, j) = n;
-      }
+      change |= compute_new_state (i, j);
 
   return change;
 }
