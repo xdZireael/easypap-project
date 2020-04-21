@@ -65,7 +65,7 @@ void sable_draw_4partout (void)
   max_grains = 8;
   for (int i = 1; i < DIM - 1; i++)
     for (int j = 1; j < DIM - 1; j++)
-      table (i, j) = 4;
+      cur_img (i, j) = table (i, j) = 4;
 }
 
 void sable_draw_DIM (void)
@@ -73,15 +73,17 @@ void sable_draw_DIM (void)
   max_grains = DIM;
   for (int i = DIM / 4; i < DIM - 1; i += DIM / 4)
     for (int j = DIM / 4; j < DIM - 1; j += DIM / 4)
-      table (i, j) = i * j / 4;
+      cur_img (i, j) = table (i, j) = i * j / 4;
 }
 
 void sable_draw_alea (void)
 {
   max_grains = 5000;
   for (int i = 0; i<DIM>> 3; i++) {
-    table (1 + random () % (DIM - 2), 1 + random () % (DIM - 2)) =
-        1000 + (random () % (4000));
+    int i = 1 + random () % (DIM - 2);
+    int j = 1 + random () % (DIM - 2);
+    int grains = 1000 + (random () % (4000));
+    cur_img (i, j) = table (i, j) = grains;
   }
 }
 
