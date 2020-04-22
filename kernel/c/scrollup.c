@@ -69,9 +69,6 @@ static cl_mem twin_buffer = 0, mask_buffer = 0;
 
 void scrollup_init_ocl_ouf (void)
 {
-  if (DIM != 1024)
-    exit_with_error ("scrollup-OpenCL-de-Ouf requires 1024x1024 images");
-
   const int size = DIM * DIM * sizeof (unsigned);
 
   mask_buffer = clCreateBuffer (context, CL_MEM_READ_WRITE, size, NULL, NULL);
