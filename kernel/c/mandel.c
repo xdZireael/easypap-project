@@ -3,30 +3,8 @@
 
 #include <omp.h>
 
-#define MAX_ITERATIONS 4096
-#define ZOOM_SPEED -0.01
-
-static float leftX   = -0.2395;
-static float rightX  = -0.2275;
-static float topY    = .660;
-static float bottomY = .648;
-
-static float xstep;
-static float ystep;
-
 static unsigned compute_one_pixel (int i, int j);
 static void zoom (void);
-
-void mandel_init ()
-{
-#ifdef ENABLE_VECTO
-  if (TILE_SIZE < VEC_SIZE)
-    exit_with_error ("TILE_SIZE (%d) is lower than VEC_SIZE (%d)", TILE_SIZE, VEC_SIZE);
-#endif
-
-  xstep = (rightX - leftX) / DIM;
-  ystep = (topY - bottomY) / DIM;
-}
 
 ///////////////////////////// Simple sequential version (seq)
 // Suggested cmdline:
@@ -82,6 +60,28 @@ unsigned mandel_compute_tiled (unsigned nb_iter)
 }
 
 /////////////// Mandelbrot basic computation
+
+#define MAX_ITERATIONS 4096
+#define ZOOM_SPEED -0.01
+
+static float leftX   = -0.2395;
+static float rightX  = -0.2275;
+static float topY    = .660;
+static float bottomY = .648;
+
+static float xstep;
+static float ystep;
+
+void mandel_init ()
+{
+#ifdef ENABLE_VECTO
+  if (TILE_SIZE < VEC_SIZE)
+    exit_with_error ("TILE_SIZE (%d) is lower than VEC_SIZE (%d)", TILE_SIZE, VEC_SIZE);
+#endif
+
+  xstep = (rightX - leftX) / DIM;
+  ystep = (topY - bottomY) / DIM;
+}
 
 static unsigned iteration_to_color (unsigned iter)
 {
