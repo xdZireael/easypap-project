@@ -106,6 +106,51 @@ unsigned spin_compute_tiled (unsigned nb_iter)
   return 0;
 }
 
+///////////////////////////// MPI version (mpi)
+// Suggested cmdline(s):
+// ./run -k spin -v mpi -mpi "-np 2" -d M -m
+//
+#ifdef ENABLE_MPI
+
+static int mpi_y    = -1;
+static int mpi_h    = -1;
+static int mpi_rank = -1;
+static int mpi_size = -1;
+
+void spin_init_mpi (void)
+{
+  easypap_check_mpi (); // check if MPI was correctly configured
+
+  MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);
+  MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
+
+  if (mpi_size & (mpi_size - 1))
+    exit_with_error ("This implementation requires 'MPI_Comm_size' to be "
+                     "a power of two");
+
+  mpi_y = mpi_rank * (DIM / mpi_size);
+  mpi_h = (DIM / mpi_size);
+
+  PRINT_DEBUG ('M', "In charge of slice [%d-%d]\n", mpi_y, mpi_y + mpi_h - 1);
+}
+
+unsigned spin_compute_mpi (unsigned nb_iter)
+{
+  for (unsigned it = 1; it <= nb_iter; it++) {
+
+    do_tile (0, mpi_y, DIM, mpi_h, 0);
+
+    rotate ();
+  }
+
+  MPI_Gather ((mpi_rank == 0 ? MPI_IN_PLACE : image + mpi_y * DIM), mpi_h * DIM,
+              MPI_INT, image, mpi_h * DIM, MPI_INT, 0, MPI_COMM_WORLD);
+
+  return 0;
+}
+
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 
 static float base_angle = 0.0;
