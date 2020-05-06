@@ -316,6 +316,7 @@ int main (int argc, char **argv)
     if (opencl_used)
       graphics_share_texture_buffers ();
 
+  printf ("calling\n");
     if (the_refresh_img)
       the_refresh_img ();
 
@@ -430,8 +431,12 @@ int main (int argc, char **argv)
             if (do_thumbs && easypap_proc_is_master ()) {
               static unsigned iter_no = 0;
 
-              if (opencl_used)
-                ocl_retrieve_image (image);
+              if (opencl_used) {
+                if (the_refresh_img)
+                  the_refresh_img ();
+                else
+                  ocl_retrieve_image (image);
+              }
 
               graphics_save_thumbnail (++iter_no);
             }
@@ -483,10 +488,10 @@ int main (int argc, char **argv)
         if (do_thumbs && easypap_proc_is_master ()) {
           static unsigned iter_no = 0;
 
-          if (opencl_used)
-            ocl_retrieve_image (image);
-          else if (the_refresh_img)
+          if (the_refresh_img)
             the_refresh_img ();
+          else if (opencl_used)
+            ocl_retrieve_image (image);
 
           graphics_save_thumbnail (++iter_no);
         }
@@ -521,10 +526,10 @@ int main (int argc, char **argv)
 
     char filename[1024];
 
-    if (opencl_used)
-      ocl_retrieve_image (image);
-    else if (the_refresh_img)
+    if (the_refresh_img)
       the_refresh_img ();
+    else if (opencl_used)
+      ocl_retrieve_image (image);
 
     sprintf (filename, "dump-%s-%s-dim-%d-iter-%d.png", kernel_name,
              variant_name, DIM, iterations);
