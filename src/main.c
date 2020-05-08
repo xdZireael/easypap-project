@@ -316,7 +316,6 @@ int main (int argc, char **argv)
     if (opencl_used)
       graphics_share_texture_buffers ();
 
-  printf ("calling\n");
     if (the_refresh_img)
       the_refresh_img ();
 
