@@ -22,7 +22,7 @@ unsigned SIZE  = 0;
 
 static size_t max_workgroup_size = 0;
 
-cl_int err;
+static cl_int err;
 static cl_platform_id chosen_platform = NULL;
 static cl_device_id chosen_device     = NULL;
 static cl_program program; // compute program
