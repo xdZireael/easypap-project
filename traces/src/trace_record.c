@@ -21,7 +21,7 @@
 
 unsigned do_trace = 0;
 
-void trace_record_init (char *file, unsigned cpu, unsigned dim, char *label)
+void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim, char *label)
 {
   fut_set_filename (file);
   enable_fut_flush ();
@@ -29,7 +29,8 @@ void trace_record_init (char *file, unsigned cpu, unsigned dim, char *label)
   if (fut_setup (BUFFER_SIZE, 0xffff, 0) < 0)
     exit_with_error ("fut_setup");
 
-  FUT_PROBE1 (0x1, TRACE_NB_CORES, cpu);
+  // We use 2 lanes per GPU : one for computations, the other for data transfers
+  FUT_PROBE2 (0x1, TRACE_NB_THREADS, cpu, gpu *2 );
   FUT_PROBE1 (0x1, TRACE_DIM, dim);
   if (label != NULL)
     FUT_PROBESTR (0x1, TRACE_LABEL, label);
@@ -59,7 +60,7 @@ void __trace_record_start_tile (long time, unsigned cpu)
   FUT_PROBE2 (0x1, TRACE_BEGIN_TILE, time, cpu);
 }
 
-void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y, unsigned w, unsigned h)
+void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y, unsigned w, unsigned h, int transfert)
 {
-  FUT_PROBE6 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h);
+  FUT_PROBE7 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h, transfert);
 }

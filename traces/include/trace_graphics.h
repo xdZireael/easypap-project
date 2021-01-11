@@ -18,12 +18,14 @@ void trace_graphics_shift_left (void);
 void trace_graphics_shift_right (void);
 void trace_graphics_zoom_in (void);
 void trace_graphics_zoom_out (void);
+void trace_graphics_zoom_to_selection (void);
 void trace_graphics_reset_zoom (void);
 void trace_graphics_display_all (void);
 void trace_graphics_toggle_align_mode (void);
 void trace_graphics_toggle_vh_mode (void);
 
 extern int use_thumbnails;
-
+extern unsigned char brightness;
+extern unsigned soft_rendering;
 
 #endif

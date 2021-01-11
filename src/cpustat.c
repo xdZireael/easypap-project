@@ -20,11 +20,11 @@
 #define HISTOGRAM_HEIGHT 100
 #define BAR_WIDTH 4
 #define BAR_HEIGHT HISTOGRAM_HEIGHT
-#define PERFMETER_HEIGHT 14
+#define PERFMETER_HEIGHT 16
 #define PERFMETER_WIDTH HISTOGRAM_WIDTH
 #define RIGHT_MARGIN 16
 #define LEFT_MARGIN 80
-#define INTERMARGIN 4
+#define INTERMARGIN 12
 #define TOP_MARGIN 16
 #define BOTTOM_MARGIN 16
 
@@ -49,6 +49,8 @@ typedef struct
 } cpu_stat_t;
 
 static unsigned NBCORES      = 1;
+static unsigned NBGPUS       = 0;
+
 static cpu_stat_t *cpu_stats = NULL;
 
 float cpustat_activity_ratio (int who);
@@ -57,7 +59,7 @@ static float idle_total (void)
 {
   long total = 0, idle  = 0;
 
-  for (int c = 0; c < NBCORES; c++) {
+  for (int c = 0; c < NBCORES + NBGPUS; c++) {
     idle  = idle + cpu_stats[c].cumulated_idle;
     total = total + cpu_stats[c].cumulated_work + cpu_stats[c].cumulated_idle;
   }
@@ -136,11 +138,13 @@ static void cpustat_create_text_texture (void)
   if (font == NULL)
     exit_with_error ("TTF_OpenFont failed: %s", SDL_GetError ());
 
-  for (int c = 0; c <= NBCORES; c++) {
+  for (int c = 0; c <= NBCORES + NBGPUS; c++) {
     char msg[32];
     SDL_Rect dst;
     if (c < NBCORES) {
       snprintf (msg, 32, "CPU %2d ", c);
+    } else if (c < NBCORES + NBGPUS) {
+      snprintf (msg, 32, "GPU %2d ", c - NBCORES);
     } else {
       snprintf (msg, 32, "Idleness ");
     }
@@ -151,7 +155,7 @@ static void cpustat_create_text_texture (void)
     dst.x = LEFT_MARGIN - s->w;
     dst.y = TOP_MARGIN + (PERFMETER_HEIGHT + INTERMARGIN) * c +
             (PERFMETER_HEIGHT / 2) - (s->h / 2);
-    if (c == NBCORES)
+    if (c == NBCORES + NBGPUS)
       dst.y += HISTOGRAM_HEIGHT / 2 - PERFMETER_HEIGHT / 2;
 
     SDL_BlitSurface (s, NULL, surface, &dst);
@@ -193,7 +197,7 @@ static void cpustat_draw_perfmeters (void)
   dst.w = PERFMETER_WIDTH;
   dst.h = PERFMETER_HEIGHT;
 
-  for (int c = 0; c < NBCORES; c++) {
+  for (int c = 0; c < NBCORES + NBGPUS; c++) {
     SDL_RenderCopy (ren, perf_frame[c % MAX_COLORS], &src, &dst);
     dst.w = cpustat_activity_ratio (c) * PERFMETER_WIDTH;
     src.w = dst.w;
@@ -251,13 +255,14 @@ static void cpustat_draw_idleness (void)
 void cpustat_init (int x, int y)
 {
   NBCORES = easypap_requested_number_of_threads ();
+  NBGPUS = easypap_number_of_gpus ();
 
-  cpu_stats = malloc (NBCORES * sizeof (cpu_stat_t));
+  cpu_stats = malloc ((NBCORES + NBGPUS) * sizeof (cpu_stat_t));
 
   WINDOW_WIDTH          = LEFT_MARGIN + PERFMETER_WIDTH + RIGHT_MARGIN;
   INITIAL_WINDOW_HEIGHT = TOP_MARGIN + BOTTOM_MARGIN +
-                          NBCORES * PERFMETER_HEIGHT +
-                          (NBCORES - 1) * INTERMARGIN;
+                          (NBCORES + NBGPUS) * PERFMETER_HEIGHT +
+                          (NBCORES + NBGPUS - 1) * INTERMARGIN;
   WINDOW_HEIGHT = INITIAL_WINDOW_HEIGHT + INTERMARGIN + HISTOGRAM_HEIGHT;
 
   win = SDL_CreateWindow ("Activity Monitor", x, y, WINDOW_WIDTH, WINDOW_HEIGHT,
@@ -267,7 +272,7 @@ void cpustat_init (int x, int y)
 
   // Initialisation du moteur de rendu
   ren = SDL_CreateRenderer (
-      win, -1, SDL_RENDERER_ACCELERATED /* | SDL_RENDERER_PRESENTVSYNC */);
+      win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (ren == NULL)
     exit_with_error ("SDL_CreateRenderer failed: %s", SDL_GetError ());
 
@@ -284,7 +289,7 @@ void cpustat_init (int x, int y)
 
 void cpustat_reset (long now)
 {
-  for (int c = 0; c < NBCORES; c++) {
+  for (int c = 0; c < NBCORES + NBGPUS; c++) {
     cpu_stats[c].cumulated_idle = cpu_stats[c].cumulated_work =
         cpu_stats[c].nb_tiles   = 0;
     cpu_stats[c].start_time     = 0;
@@ -299,8 +304,9 @@ void cpustat_start_work (long now, int who)
   cpu_stats[who].nb_tiles++;
   cpu_stats[who].start_time = now;
 
-  //PRINT_DEBUG ('m', "CPU %d starts a new tile (was idle during %ld\n", who,
-  //             (now - cpu_stats[who].end_time));
+  if (who == NBCORES) // GPU
+    PRINT_DEBUG ('m', "CPU %d starts a new tile (was idle during %ld)\n", who,
+                 (now - cpu_stats[who].end_time));
 }
 
 long cpustat_finish_work (long now, int who)
@@ -309,20 +315,22 @@ long cpustat_finish_work (long now, int who)
 
   // How long did the cpu work?
   cpu_stats[who].cumulated_work += duration;
+  cpu_stats[who].end_time = now;
 
-  //PRINT_DEBUG ('m', "CPU %d completes its tile (worked during %ld)\n", who,
-  //             duration);
+  if (who == NBCORES) // GPU
+    PRINT_DEBUG ('m', "CPU %d completes its tile (worked during %ld)\n", who,
+                 duration);
   return duration;
 }
 
-void cpustat_start_idle (long now, int who)
+void cpustat_deduct_idle (long duration, int who)
 {
-  cpu_stats[who].end_time = now;
+  cpu_stats[who].cumulated_idle -= duration;
 }
 
 void cpustat_freeze (long now)
 {
-  for (int c = 0; c < NBCORES; c++)
+  for (int c = 0; c < NBCORES + NBGPUS; c++)
     cpu_stats[c].cumulated_idle += (now - cpu_stats[c].end_time);
 }
 

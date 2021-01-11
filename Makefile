@@ -51,6 +51,7 @@ ALL_DEPENDS := $(DEPENDS) $(K_DEPENDS) $(T_DEPENDS) $(L_DEPENDS)
 MAKEFILES	:= Makefile
 
 CC			:= gcc
+#CC			:= clang-mp-11
 
 CFLAGS 		+= -O3 -march=native -Wall -Wno-unused-function
 CFLAGS		+= -I./include -I./traces/include
@@ -59,9 +60,9 @@ LDLIBS		+= -lm
 ifeq ($(ARCH),DARWIN)
 LDLIBS		+= -framework OpenGL
 else
-CFLAGS		+= -rdynamic
+CFLAGS		+= -pthread -rdynamic
 LDFLAGS		+= -export-dynamic
-LDLIBS		+= -lGL -lpthread -ldl
+LDLIBS		+= -lGL -ldl
 endif
 
 # Vectorization

@@ -16,11 +16,6 @@ static unsigned int4_to_color (int4 i)
   return *((unsigned *) &v);
 }
 
-static unsigned color_mean (unsigned c1, unsigned c2)
-{
-  return int4_to_color ((color_to_int4 (c1) + color_to_int4 (c2)) / (int4)2);
-}
-
 static float4 color_scatter (unsigned c)
 {
   uchar4 ci;
@@ -38,6 +33,10 @@ __kernel void update_texture (__global unsigned *cur, __write_only image2d_t tex
   int x = get_global_id (0);
 
   write_imagef (tex, (int2)(x, y), color_scatter (cur [y * DIM + x]));
+}
+
+__kernel void bench_kernel (void)
+{
 }
 
 static inline int extract_red (unsigned c)

@@ -2,11 +2,13 @@
 #define TRACE_DATA_IS_DEF
 
 #include "list.h"
+#include "trace_common.h"
 
 typedef struct
 {
   long start_time, end_time;
   unsigned x, y, w, h;
+  int task_type;
   unsigned iteration;
   struct list_head cpu_chain;
 } trace_task_t;
@@ -24,6 +26,7 @@ typedef struct
   unsigned num;
   unsigned dimensions;
   unsigned nb_cores;
+  unsigned nb_gpu;
   unsigned nb_iterations;
   char *label;
   struct list_head *per_cpu;
@@ -37,13 +40,13 @@ extern unsigned nb_traces;
 extern unsigned trace_data_align_mode;
 
 void trace_data_init (trace_t *tr, unsigned num);
-void trace_data_set_nb_cores (trace_t *tr, unsigned nb_cores);
+void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores, unsigned nb_gpu);
 void trace_data_set_dim (trace_t *tr, unsigned dim);
 void trace_data_set_label (trace_t *tr, char *label);
 
 void trace_data_add_task (trace_t *tr, long start_time, long end_time,
                           unsigned x, unsigned y, unsigned w, unsigned h,
-                          unsigned iteration, unsigned cpu);
+                          unsigned iteration, unsigned cpu, task_type_t task_type);
 
 void trace_data_start_iteration (trace_t *tr, long start_time);
 void trace_data_end_iteration (trace_t *tr, long end_time);

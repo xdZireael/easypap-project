@@ -4,9 +4,9 @@
 #include "global.h"
 #include "ocl.h"
 
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <dlfcn.h>
 
 #ifdef __APPLE__
 #define DLSYM_FLAG RTLD_SELF
@@ -14,9 +14,9 @@
 #define DLSYM_FLAG NULL
 #endif
 
-
-void_func_t the_first_touch = NULL;
+draw_func_t the_config      = NULL;
 void_func_t the_init        = NULL;
+void_func_t the_first_touch = NULL;
 draw_func_t the_draw        = NULL;
 void_func_t the_finalize    = NULL;
 int_func_t the_compute      = NULL;
@@ -50,11 +50,12 @@ static void *bind_it (char *kernel, char *s, char *variant, int print_error)
   return fun;
 }
 
-void hooks_establish_bindings (void)
+void hooks_establish_bindings (int silent)
 {
-  PRINT_MASTER ("Using kernel [%s], variant [%s]\n", kernel_name, variant_name);
+  if (!silent)
+    PRINT_MASTER ("Using kernel [%s], variant [%s]\n", kernel_name, variant_name);
 
-  if(opencl_used) {
+  if (opencl_used) {
     the_compute = bind_it (kernel_name, "invoke", variant_name, 0);
     if (the_compute == NULL) {
       the_compute = ocl_invoke_kernel_generic;
@@ -65,6 +66,7 @@ void hooks_establish_bindings (void)
     the_compute = bind_it (kernel_name, "compute", variant_name, 2);
   }
 
+  the_config      = bind_it (kernel_name, "config", variant_name, 0);
   the_init        = bind_it (kernel_name, "init", variant_name, 0);
   the_draw        = bind_it (kernel_name, "draw", variant_name, 0);
   the_finalize    = bind_it (kernel_name, "finalize", variant_name, 0);

@@ -18,9 +18,8 @@
 #include "easypap.h"
 #include "graphics.h"
 #include "hooks.h"
+#include "ocl.h"
 #include "trace_record.h"
-
-#define DEFAULT_GRAIN 8
 
 int max_iter            = 0;
 unsigned refresh_rate   = -1;
@@ -49,6 +48,7 @@ unsigned do_first_touch                                    = 0;
 static unsigned do_dump __attribute__ ((unused))           = 0;
 static unsigned do_thumbs __attribute__ ((unused))         = 0;
 static unsigned show_ocl_config                            = 0;
+static unsigned list_ocl_variants                          = 0;
 
 static hwloc_topology_t topology;
 
@@ -102,6 +102,22 @@ void easypap_check_mpi (void)
 #endif
 }
 
+void easypap_check_vectorization (vec_type_t vec_type, direction_t dir)
+{
+#ifdef ENABLE_VECTO
+  // Order of types must be consistent with that defined in vec_type enum (see api_funcs.h)
+  int bytes[] = {VEC_SIZE_CHAR, VEC_SIZE_INT, VEC_SIZE_FLOAT, VEC_SIZE_DOUBLE};
+  int n       = (dir == DIR_HORIZONTAL ? TILE_W : TILE_H);
+
+  if (n < bytes[vec_type] || n % bytes[vec_type])
+    exit_with_error ("Tile %s (%d) is too small with respect to vectorization "
+                     "requirements and should be a multiple of %d",
+                     (dir == DIR_HORIZONTAL ? "width" : "height"), n,
+                     bytes[vec_type]);
+
+#endif
+}
+
 static void update_refresh_rate (int p)
 {
   static int tab_refresh_rate[] = {1, 2, 5, 10, 100, 1000};
@@ -126,18 +142,18 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
                      strerror (errno));
 
   if (ftell (f) == 0) {
-    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "dim", "grain",
-             "threads", "kernel", "variant", "iterations", "schedule", "label",
-             "arg", "time");
+    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "dim",
+             "tilew", "tileh", "threads", "kernel", "variant", "iterations",
+             "schedule", "label", "arg", "time");
   }
 
   if (uname (&s) < 0)
     exit_with_error ("uname failed (%s)", strerror (errno));
 
-  fprintf (f, "%s;%u;%u;%u;%s;%s;%u;%s;%s;%s;%ld\n", s.nodename, DIM, GRAIN,
-           easypap_requested_number_of_threads (), kernel_name, variant_name,
-           nb_iter, easypap_omp_schedule (), (label ?: "unlabelled"),
-           (draw_param ?: "none"), time_in_us);
+  fprintf (f, "%s;%u;%u;%u;%u;%s;%s;%u;%s;%s;%s;%ld\n", s.nodename, DIM, TILE_W,
+           TILE_H, easypap_requested_number_of_threads (), kernel_name,
+           variant_name, nb_iter, easypap_omp_schedule (),
+           (label ?: "unlabelled"), (draw_param ?: "none"), time_in_us);
 
   fclose (f);
 }
@@ -145,6 +161,53 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
 static void usage (int val);
 
 static void filter_args (int *argc, char *argv[]);
+
+static void check_tile_size (void)
+{
+  if (TILE_W == 0) {
+    if (NB_TILES_X == 0) {
+      TILE_W     = TILE_H ?: DEFAULT_CPU_TILE_SIZE;
+      NB_TILES_X = DIM / TILE_W;
+    } else {
+      TILE_W = DIM / NB_TILES_X;
+    }
+  } else if (NB_TILES_X == 0) {
+    NB_TILES_X = DIM / TILE_W;
+  } else if (NB_TILES_X * TILE_W != DIM) {
+    exit_with_error (
+        "Inconsistency detected: NB_TILES_X (%d) x TILE_W (%d) != DIM (%d).",
+        NB_TILES_X, TILE_W, DIM);
+  }
+
+  if (DIM % TILE_W)
+    exit_with_error ("DIM (%d) is not a multiple of TILE_W (%d)!", DIM, TILE_W);
+
+  if (DIM % NB_TILES_X)
+    exit_with_error ("DIM (%d) is not a multiple of NB_TILES_X (%d)!", DIM,
+                     NB_TILES_X);
+
+  if (TILE_H == 0) {
+    if (NB_TILES_Y == 0) {
+      TILE_H     = TILE_W;
+      NB_TILES_Y = DIM / TILE_H;
+    } else {
+      TILE_H = DIM / NB_TILES_Y;
+    }
+  } else if (NB_TILES_Y == 0) {
+    NB_TILES_Y = DIM / TILE_H;
+  } else if (NB_TILES_Y * TILE_H != DIM) {
+    exit_with_error (
+        "Inconsistency detected: NB_TILES_Y (%d) x TILE_H (%d) != DIM (%d).",
+        NB_TILES_Y, TILE_H, DIM);
+  }
+
+  if (DIM % TILE_H)
+    exit_with_error ("DIM (%d) is not a multiple of TILE_H (%d)!", DIM, TILE_H);
+
+  if (DIM % NB_TILES_Y)
+    exit_with_error ("Warning: DIM (%d) is not a multiple of NB_TILES_Y (%d)!",
+                     DIM, NB_TILES_Y);
+}
 
 static void init_phases (void)
 {
@@ -160,10 +223,10 @@ static void init_phases (void)
 
     MPI_Comm_rank (MPI_COMM_WORLD, &_easypap_mpi_rank);
     MPI_Comm_size (MPI_COMM_WORLD, &_easypap_mpi_size);
-    PRINT_DEBUG ('i', "Init phase 0: MPI_Init_thread called (%d/%d)\n",
+    PRINT_DEBUG ('i', "Init phase -1: MPI_Init_thread called (%d/%d)\n",
                  _easypap_mpi_rank, _easypap_mpi_size);
   } else
-    PRINT_DEBUG ('i', "Init phase 0: [Process not launched by mpirun]\n");
+    PRINT_DEBUG ('i', "Init phase -1: [Process not launched by mpirun]\n");
 #endif
 
   /* Allocate and initialize topology object. */
@@ -184,7 +247,7 @@ static void init_phases (void)
       variant_name = opencl_used ? DEFAULT_OCL_VARIANT : DEFAULT_VARIANT;
   }
 
-  hooks_establish_bindings ();
+  hooks_establish_bindings (show_ocl_config | list_ocl_variants);
 
 #ifdef ENABLE_SDL
   master_do_display = do_display;
@@ -200,33 +263,11 @@ static void init_phases (void)
 #else
   if (!DIM)
     DIM = DEFAULT_DIM;
-  PRINT_DEBUG ('i', "Init phase 1: DIM = %d\n", DIM);
+  PRINT_DEBUG ('i', "Init phase 0: DIM = %d\n", DIM);
 #endif
 
   // At this point, we know the value of DIM
-  if (GRAIN == 0) {
-    if (TILE_SIZE == 0) {
-      GRAIN     = DEFAULT_GRAIN;
-      TILE_SIZE = DIM / GRAIN;
-    } else {
-      GRAIN = DIM / TILE_SIZE;
-    }
-  } else {
-    if (TILE_SIZE == 0) {
-      TILE_SIZE = DIM / GRAIN;
-    } else if (GRAIN * TILE_SIZE != DIM)
-      exit_with_error (
-          "Inconsistency detected: GRAIN (%d) x TILE_SIZE (%d) != DIM (%d).\n",
-          GRAIN, TILE_SIZE, DIM);
-  }
-
-  if (DIM % GRAIN)
-    fprintf (stderr, "Warning: DIM (%d) is not a multiple of GRAIN (%d)!\n",
-             DIM, GRAIN);
-
-  if (DIM % TILE_SIZE)
-    fprintf (stderr, "Warning: DIM (%d) is not a multiple of TILE_SIZE (%d)!\n",
-             DIM, TILE_SIZE);
+  check_tile_size ();
 
 #ifdef ENABLE_MONITORING
 #ifdef ENABLE_TRACE
@@ -240,20 +281,29 @@ static void init_phases (void)
     else
       strcpy (filename, DEFAULT_EASYVIEW_FILE);
 
-    trace_record_init (filename, easypap_requested_number_of_threads (), DIM,
-                       label);
+    trace_record_init (filename, easypap_requested_number_of_threads (),
+                       easypap_number_of_gpus (), DIM, label);
   }
 #endif
 #endif
 
+  if (the_config != NULL) {
+    the_config (draw_param);
+    PRINT_DEBUG ('i', "Init phase 1: config() hook called\n");
+  } else {
+    PRINT_DEBUG ('i', "Init phase 1: [no config() hook defined]\n");
+  }
+
   if (opencl_used) {
-    ocl_init (show_ocl_config);
+    ocl_init (show_ocl_config, list_ocl_variants);
+    ocl_build_program (list_ocl_variants);
     ocl_alloc_buffers ();
+    PRINT_DEBUG ('i', "Init phase 2: OpenCL initialized\n");
   } else
     PRINT_DEBUG ('i', "Init phase 2: [OpenCL init not required]\n");
 
   // OpenCL context is initialized, so we can safely call kernel dependent
-  // init() hook.
+  // init() func which may allocate additional buffers.
   if (the_init != NULL) {
     the_init ();
     PRINT_DEBUG ('i', "Init phase 3: init() hook called\n");
@@ -292,7 +342,7 @@ static void init_phases (void)
   }
 
   if (opencl_used) {
-    ocl_send_image (image);
+    ocl_send_data ();
   } else
     PRINT_DEBUG ('i', "Init phase 7: [no OpenCL data transfer involved]\n");
 }
@@ -303,6 +353,19 @@ int main (int argc, char **argv)
   int iterations = 0;
 
   filter_args (&argc, argv);
+
+  if (list_ocl_variants) {
+    // bypass complete initialization
+
+    if (kernel_name == NULL)
+      kernel_name = DEFAULT_KERNEL;
+
+    ocl_init (0, list_ocl_variants);
+    ocl_build_program (list_ocl_variants);
+
+    // Never reached
+    assert (0);
+  }
 
   arch_flags_print ();
 
@@ -341,7 +404,7 @@ int main (int argc, char **argv)
 
           r = graphics_get_event (&evt, step | stable);
 
-          if (r > 0)
+          if (r > 0) {
             switch (evt.type) {
 
             case SDL_QUIT:
@@ -385,6 +448,7 @@ int main (int argc, char **argv)
 
             default:;
             }
+          }
 
         } while ((r || step) && !quit);
 
@@ -396,7 +460,8 @@ int main (int argc, char **argv)
 
       if (!stable) {
         if (quit) {
-          PRINT_MASTER ("Computation aborted at iteration %d\n", iterations);
+          PRINT_MASTER ("Computation interrupted at iteration %d\n",
+                        iterations);
         } else {
           if (max_iter && iterations >= max_iter) {
             PRINT_MASTER ("Computation stopped after %d iterations\n",
@@ -434,7 +499,7 @@ int main (int argc, char **argv)
                 if (the_refresh_img)
                   the_refresh_img ();
                 else
-                  ocl_retrieve_image (image);
+                  ocl_retrieve_data ();
               }
 
               graphics_save_thumbnail (++iter_no);
@@ -490,7 +555,7 @@ int main (int argc, char **argv)
           if (the_refresh_img)
             the_refresh_img ();
           else if (opencl_used)
-            ocl_retrieve_image (image);
+            ocl_retrieve_data ();
 
           graphics_save_thumbnail (++iter_no);
         }
@@ -528,7 +593,7 @@ int main (int argc, char **argv)
     if (the_refresh_img)
       the_refresh_img ();
     else if (opencl_used)
-      ocl_retrieve_image (image);
+      ocl_retrieve_data ();
 
     sprintf (filename, "dump-%s-%s-dim-%d-iter-%d.png", kernel_name,
              variant_name, DIM, iterations);
@@ -568,19 +633,18 @@ static void usage (int val)
   fprintf (
       stderr,
       "\t-a\t| --arg <string>\t: pass argument <string> to draw function\n");
-  fprintf (
-      stderr,
-      "\t-d\t| --debug-flags <flags>\t: enable debug messages (see debug.h)\n");
+  fprintf (stderr, "\t-d\t| --debug-flags <flags>\t: enable debug messages "
+                   "(see debug.h)\n");
   fprintf (stderr, "\t-du\t| --dump\t\t: dump final image to disk\n");
   fprintf (stderr,
            "\t-ft\t| --first-touch\t\t: touch memory on different cores\n");
-  fprintf (stderr, "\t-g\t| --grain <G>\t\t: use G x G tiles\n");
   fprintf (stderr, "\t-h\t| --help\t\t: display help\n");
   fprintf (stderr, "\t-i\t| --iterations <n>\t: stop after n iterations\n");
   fprintf (stderr,
            "\t-k\t| --kernel <name>\t: override KERNEL environment variable\n");
   fprintf (stderr,
            "\t-lb\t| --label <name>\t: assign name <label> to current run\n");
+  fprintf (stderr, "\t-lov\t| --list-ocl-variants\t: list OpenCL variants\n");
   fprintf (stderr, "\t-l\t| --load-image <file>\t: use PNG image <file>\n");
   fprintf (stderr,
            "\t-m \t| --monitoring\t\t: enable graphical thread monitoring\n");
@@ -588,10 +652,9 @@ static void usage (int val)
                    "process launcher\n");
   fprintf (stderr,
            "\t-n\t| --no-display\t\t: avoid graphical display overhead\n");
+  fprintf (stderr, "\t-nt\t| --nb-tiles <N>\t: use N x N tiles\n");
   fprintf (stderr, "\t-nvs\t| --no-vsync\t\t: disable vertical sync\n");
   fprintf (stderr, "\t-o\t| --ocl\t\t\t: use OpenCL version\n");
-  fprintf (stderr, "\t-of\t| --output-file <nfike>\t: output performance "
-                   "numbers in <file>\n");
   fprintf (stderr, "\t-p\t| --pause\t\t: pause between iterations (press space "
                    "to continue)\n");
   fprintf (stderr, "\t-q\t| --quit\t\t: exit once iterations are done\n");
@@ -601,8 +664,12 @@ static void usage (int val)
   fprintf (stderr,
            "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
   fprintf (stderr,
+           "\t-si\t| --show-iterations\t: display iterations in main window \n");
+  fprintf (stderr,
            "\t-so\t| --show-ocl\t\t: display OpenCL platform and devices\n");
-  fprintf (stderr, "\t-th\t| --thumbs\t\t: generate thumbnails\n");
+  fprintf (stderr, "\t-tn\t| --thumbnails\t\t: generate thumbnails\n");
+  fprintf (stderr, "\t-tw\t| --tile-width <W>\t: use tiles of width W\n");
+  fprintf (stderr, "\t-th\t| --tile-height <H>\t: use tiles of height H\n");
   fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
   fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
   fprintf (stderr,
@@ -634,14 +701,21 @@ static void filter_args (int *argc, char *argv[])
       soft_rendering = 1;
     } else if (!strcmp (*argv, "--show-ocl") || !strcmp (*argv, "-so")) {
       show_ocl_config = 1;
-      opencl_used = 1;
+      opencl_used     = 1;
+      do_display      = 0;
+    } else if (!strcmp (*argv, "--show-iterations") || !strcmp (*argv, "-si")) {
+      graphics_toggle_display_iteration_number ();
+    } else if (!strcmp (*argv, "--list-ocl-variants") ||
+               !strcmp (*argv, "-lov")) {
+      list_ocl_variants = 1;
+      opencl_used       = 1;
+      do_display        = 0;
     } else if (!strcmp (*argv, "--first-touch") || !strcmp (*argv, "-ft")) {
       do_first_touch = 1;
     } else if (!strcmp (*argv, "--monitoring") || !strcmp (*argv, "-m")) {
 #ifndef ENABLE_SDL
-      fprintf (
-          stderr,
-          "Warning: cannot monitor execution when ENABLE_SDL is not defined\n");
+      fprintf (stderr, "Warning: cannot monitor execution when ENABLE_SDL is "
+                       "not defined\n");
 #else
       do_gmonitor = 1;
 #endif
@@ -653,7 +727,7 @@ static void filter_args (int *argc, char *argv[])
 #else
       do_trace    = 1;
 #endif
-    } else if (!strcmp (*argv, "--thumbs") || !strcmp (*argv, "-th")) {
+    } else if (!strcmp (*argv, "--thumbnails") || !strcmp (*argv, "-tn")) {
 #ifndef ENABLE_SDL
       fprintf (stderr, "Warning: cannot generate thumbnails when ENABLE_SDL is "
                        "not defined\n");
@@ -731,14 +805,31 @@ static void filter_args (int *argc, char *argv[])
       (*argc)--;
       argv++;
       DIM = atoi (*argv);
-    } else if (!strcmp (*argv, "--grain") || !strcmp (*argv, "-g")) {
+    } else if (!strcmp (*argv, "--nb-tiles") || !strcmp (*argv, "-nt")) {
       if (*argc == 1) {
-        fprintf (stderr, "Error: grain size is missing\n");
+        fprintf (stderr, "Error: number of tiles is missing\n");
         usage (1);
       }
       (*argc)--;
       argv++;
-      GRAIN = atoi (*argv);
+      NB_TILES_X = atoi (*argv);
+      NB_TILES_Y = NB_TILES_X;
+    } else if (!strcmp (*argv, "--tile-width") || !strcmp (*argv, "-tw")) {
+      if (*argc == 1) {
+        fprintf (stderr, "Error: tile width is missing\n");
+        usage (1);
+      }
+      (*argc)--;
+      argv++;
+      TILE_W = atoi (*argv);
+    } else if (!strcmp (*argv, "--tile-height") || !strcmp (*argv, "-th")) {
+      if (*argc == 1) {
+        fprintf (stderr, "Error: tile height is missing\n");
+        usage (1);
+      }
+      (*argc)--;
+      argv++;
+      TILE_H = atoi (*argv);
     } else if (!strcmp (*argv, "--tile-size") || !strcmp (*argv, "-ts")) {
       if (*argc == 1) {
         fprintf (stderr, "Error: tile size is missing\n");
@@ -746,7 +837,8 @@ static void filter_args (int *argc, char *argv[])
       }
       (*argc)--;
       argv++;
-      TILE_SIZE = atoi (*argv);
+      TILE_W = atoi (*argv);
+      TILE_H = TILE_W;
     } else if (!strcmp (*argv, "--variant") || !strcmp (*argv, "-v")) {
 
       if (*argc == 1) {
@@ -788,14 +880,6 @@ static void filter_args (int *argc, char *argv[])
       argv++;
 
       debug_init (*argv);
-    } else if (!strcmp (*argv, "--output-file") || !strcmp (*argv, "-of")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: filename is missing\n");
-        usage (1);
-      }
-      (*argc)--;
-      argv++;
-      output_file = *argv;
     } else {
       fprintf (stderr, "Error: unknown option %s\n", *argv);
       usage (1);

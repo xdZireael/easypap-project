@@ -13,7 +13,7 @@ __kernel void scrollup_ocl (__global unsigned *in, __global unsigned *out)
   out [y * DIM + x] = couleur;
 }
 
-__kernel void scrollup_ocl_ouf (__global unsigned *ina, __global unsigned *inb, __global unsigned *out, __global unsigned *mask)
+__kernel void scrollup_ocl_ouf (__global unsigned *ina, __global unsigned *inb, __global unsigned *out, __global unsigned *mask, unsigned framecolor)
 {
   unsigned y = get_global_id (1);
   unsigned x = get_global_id (0);
@@ -25,10 +25,10 @@ __kernel void scrollup_ocl_ouf (__global unsigned *ina, __global unsigned *inb, 
 
   pixel_color = inb [y * DIM + x] = ina [ysource * DIM + x];
 
-  color_b.x = 0xFF;
-  color_b.y = extract_blue (m);
-  color_b.z = extract_green (m);
-  color_b.w = extract_red (m);
+  color_b.x = extract_alpha (framecolor);
+  color_b.y = extract_blue (framecolor);
+  color_b.z = extract_green (framecolor);
+  color_b.w = extract_red (framecolor);
 
   color_a.x = extract_alpha (pixel_color);
   color_a.y = extract_blue (pixel_color);

@@ -11,25 +11,30 @@
 #include "error.h"
 #include "global.h"
 #include "graphics.h"
+#include "img_data.h"
+#include "minmax.h"
 #include "ocl.h"
+#include "time_macros.h"
 
 #define MAX_PLATFORMS 3
 #define MAX_DEVICES 5
+#define MAX_KERNELS 32
 
-unsigned TILEX = 16;
-unsigned TILEY = 16;
-unsigned SIZE  = 0;
+unsigned GPU_TILE_W = 0;
+unsigned GPU_TILE_H = 0;
+unsigned GPU_SIZE_X = 0;
+unsigned GPU_SIZE_Y = 0;
 
 static size_t max_workgroup_size = 0;
 
-static cl_int err;
 static cl_platform_id chosen_platform = NULL;
-static cl_device_id chosen_device     = NULL;
+cl_device_id chosen_device            = NULL;
 static cl_program program; // compute program
 
 cl_context context;
 cl_kernel update_kernel;
 cl_kernel compute_kernel;
+static cl_kernel bench_kernel; // bench null kernel
 cl_command_queue queue;
 cl_mem tex_buffer, cur_buffer, next_buffer;
 
@@ -70,6 +75,11 @@ static char *file_load (const char *filename)
   return b;
 }
 
+unsigned easypap_number_of_gpus (void)
+{
+  return (opencl_used ? 1 : 0);
+}
+
 static void ocl_acquire (void)
 {
   cl_int err;
@@ -86,16 +96,14 @@ static void ocl_release (void)
   check (err, "Failed to release lock");
 }
 
-void ocl_show_config (int quit, int verbose)
+static void ocl_show_config (int quit, int verbose)
 {
   cl_platform_id pf[MAX_PLATFORMS];
   cl_int nbp      = 0;
   cl_int chosen_p = -1, chosen_d = -1;
   char *glRenderer = NULL;
   char *str        = NULL;
-
-  if (quit)
-    verbose = 1;
+  cl_int err;
 
   if (do_display)
     glRenderer = (char *)glGetString (GL_RENDERER);
@@ -104,7 +112,7 @@ void ocl_show_config (int quit, int verbose)
   err = clGetPlatformIDs (MAX_PLATFORMS, pf, (cl_uint *)&nbp);
   check (err, "Failed to get platform IDs");
 
-  if (verbose)
+  if (verbose == 2)
     printf ("%d OpenCL platforms detected\n", nbp);
 
   str = getenv ("PLATFORM");
@@ -139,7 +147,7 @@ void ocl_show_config (int quit, int verbose)
     err = clGetPlatformInfo (pf[p], CL_PLATFORM_VENDOR, 1024, vendor, NULL);
     check (err, "Failed to get Platform Info");
 
-    if (verbose)
+    if (verbose == 2)
       printf ("Platform %d: %s (%s)\n", p, name, vendor);
 
     err = clGetDeviceIDs (pf[p], CL_DEVICE_TYPE_ALL, MAX_DEVICES, devices,
@@ -171,54 +179,53 @@ void ocl_show_config (int quit, int verbose)
         chosen_p        = p;
         chosen_platform = pf[p];
         chosen_d        = d;
-        chosen_device = devices[d];
+        chosen_device   = devices[d];
       }
 
       if (chosen_p == p) {
         if (chosen_d == d)
           chosen_device = devices[d];
-        else if (chosen_d == -1 && d == nbd - 1) { // Last chance to select device
+        else if (chosen_d == -1 &&
+                 d == nbd - 1) { // Last chance to select device
           chosen_d      = 0;
           chosen_device = devices[0];
         }
       }
 
-      if (verbose)
-        printf ("%s Device %d : %s [%s]\n",
+      if (verbose == 2)
+        printf ("%s Device %d: %s [%s]\n",
                 (chosen_p == p && chosen_d == d) ? "+++" : "---", d,
                 (dtype == CL_DEVICE_TYPE_GPU) ? "GPU" : "CPU", name);
-      else if (chosen_p == p && chosen_d == d)
-        printf ("Using OpenCL Device : %s [%s]\n",
+      else if (verbose == 1 && chosen_p == p && chosen_d == d)
+        printf ("Using OpenCL Device: %s [%s]\n",
                 (dtype == CL_DEVICE_TYPE_GPU) ? "GPU" : "CPU", name);
     }
   }
 
-  if (verbose && glRenderer != NULL)
+  if (verbose == 2 && glRenderer != NULL)
     printf ("Note: OpenGL renderer uses [%s]\n", glRenderer);
 
   if (quit)
     exit (0);
 }
 
-void ocl_init (int show_config_and_quit)
+void ocl_init (int show_config, int silent)
 {
-  char *str = NULL;
+  cl_int err;
+  int verbose = 0;
 
-  ocl_show_config (show_config_and_quit,
-                   debug_flags != NULL && debug_enabled ('o') /* verbose */);
+  if (!silent) {
+    if (show_config || (debug_flags != NULL && debug_enabled ('o')))
+      verbose = 2;
+    else
+      verbose = 1;
+  }
+
+  ocl_show_config (show_config, verbose);
 
   if (chosen_device == NULL)
     exit_with_error ("Device could not be automatically chosen: please use "
                      "PLATFORM and DEVICE to specify target");
-
-  str = getenv ("SIZE");
-  if (str != NULL)
-    SIZE = atoi (str);
-  else
-    SIZE = DIM;
-
-  if (SIZE > DIM)
-    exit_with_error ("SIZE (%d) cannot exceed DIM (%d)", SIZE, DIM);
 
   err = clGetDeviceInfo (chosen_device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
                          sizeof (size_t), &max_workgroup_size, NULL);
@@ -257,8 +264,6 @@ void ocl_init (int show_config_and_quit)
                                 CL_QUEUE_PROFILING_ENABLE, &err);
   check (err, "Failed to create command queue. Please make sure OpenCL and "
               "OpenGL both use the same device (--show-ocl).");
-
-  PRINT_DEBUG ('i', "Init phase 2: OpenCL initialized\n");
 }
 
 void ocl_alloc_buffers (void)
@@ -278,8 +283,9 @@ void ocl_alloc_buffers (void)
 
 void ocl_map_textures (GLuint texid)
 {
-// Shared texture buffer with OpenGL
-//
+  cl_int err;
+  // Shared texture buffer with OpenGL
+  //
 #ifdef ENABLE_SDL
   tex_buffer = clCreateFromGLTexture (context, CL_MEM_READ_WRITE, GL_TEXTURE_2D,
                                       0, texid, &err);
@@ -289,134 +295,234 @@ void ocl_map_textures (GLuint texid)
   check (err, "Failed to map texture buffer\n");
 }
 
-void ocl_send_image (unsigned *image)
+static void ocl_list_variants (void)
 {
-  // Load program source into memory
-  //
-  {
-    char kernel_file[1024];
+  cl_kernel kernels[MAX_KERNELS];
+  char buffer[1024];
+  cl_uint kernels_found = 0;
+  cl_int err;
 
-    sprintf (kernel_file, "kernel/ocl/%s.cl", kernel_name);
-    const char *opencl_prog = file_load (kernel_file);
+  err =
+      clCreateKernelsInProgram (program, MAX_KERNELS, kernels, &kernels_found);
+  check (err, "Failed to get list of kernels from program\n");
 
-    // Attach program source to context
-    //
-    program = clCreateProgramWithSource (context, 1, &opencl_prog, NULL, &err);
-    check (err, "Failed to create program");
+  for (int k = 0; k < kernels_found; k++) {
+    size_t len;
+    err = clGetKernelInfo (kernels[k], CL_KERNEL_FUNCTION_NAME, 1024, buffer,
+                           &len);
+    check (err, "Failed to get name of kernel\n");
+
+    printf ("%s\n", buffer);
   }
 
-  {
-    char *str = NULL;
+  exit (0);
+}
 
-    str = getenv ("TILEX");
-    if (str != NULL)
-      TILEX = atoi (str);
-    else
-      TILEX = 16;
+#define CALIBRATION_ITER 16
+long _calibration_delta = 0;
 
-    str = getenv ("TILEY");
-    if (str != NULL)
-      TILEY = atoi (str);
-    else
-      TILEY = TILEX;
+static void calibrate (void)
+{
+  size_t global[1] = {512}; // global domain size for our calculation
+  size_t local[1]  = {16};  // local domain size for our calculation
+  cl_event events[CALIBRATION_ITER];
+  long t;
+  cl_int err;
+
+  bench_kernel = clCreateKernel (program, "bench_kernel", &err);
+  check (err, "Failed to create bench kernel");
+
+  // Warmup
+  for (unsigned it = 0; it < 10; it++) {
+
+    err = clEnqueueNDRangeKernel (queue, bench_kernel, 1, NULL, global, local,
+                                  0, NULL, NULL);
+    check (err, "Failed to execute bench kernel");
   }
+  clFinish (queue);
 
-  {
-    // Compile program
-    //
-    char flags[1024];
+  for (int i = 0; i < 100; i++) {
+    for (unsigned it = 0; it < CALIBRATION_ITER; it++)
+      err = clEnqueueNDRangeKernel (queue, bench_kernel, 1, NULL, global, local,
+                                    0, NULL, &events[it]);
+    clFinish (queue);
+    t = what_time_is_it ();
 
-    if (draw_param)
-      sprintf (flags,
-               "-cl-mad-enable -cl-fast-relaxed-math"
-               " -DDIM=%d -DSIZE=%d -DTILEX=%d -DTILEY=%d -DKERNEL_%s"
-               " -DPARAM=%s",
-               DIM, SIZE, TILEX, TILEY, kernel_name, draw_param);
-    else
-      sprintf (flags,
-               "-cl-mad-enable -cl-fast-relaxed-math"
-               " -DDIM=%d -DSIZE=%d -DTILEX=%d -DTILEY=%d -DKERNEL_%s",
-               DIM, SIZE, TILEX, TILEY, kernel_name);
+    cl_ulong end;
 
-    err = clBuildProgram (program, 0, NULL, flags, NULL, NULL);
-    // Display compiler log
-    //
-    {
-      size_t len;
+    clGetEventProfilingInfo (events[CALIBRATION_ITER - 1],
+                             CL_PROFILING_COMMAND_END, sizeof (cl_ulong), &end,
+                             NULL);
 
-      clGetProgramBuildInfo (program, chosen_device, CL_PROGRAM_BUILD_LOG, 0,
-                             NULL, &len);
-
-      if (len > 1 && len <= 2048) {
-        char buffer[len];
-
-        fprintf (stderr, "--- OpenCL Compiler log ---\n");
-        clGetProgramBuildInfo (program, chosen_device, CL_PROGRAM_BUILD_LOG,
-                               sizeof (buffer), buffer, NULL);
-        fprintf (stderr, "%s\n", buffer);
-        fprintf (stderr, "---------------------------\n");
-      }
+    if (i == 0) {
+      _calibration_delta = t - (end / 1000);
+    } else {
+      _calibration_delta = min (_calibration_delta, t - (end / 1000));
     }
 
-    if (err != CL_SUCCESS)
-      exit_with_error ("Failed to build program");
+    for (unsigned it = 0; it < CALIBRATION_ITER; it++)
+      clReleaseEvent (events[it]);
   }
+}
+
+void ocl_build_program (int list_variants)
+{
+  cl_int err;
+  char *str = NULL;
+  char buffer[1024];
+
+  if (!GPU_SIZE_X) {
+    str = getenv ("SIZE");
+    if (str != NULL)
+      GPU_SIZE_X = atoi (str);
+    else
+      GPU_SIZE_X = DIM;
+
+    if (GPU_SIZE_X > DIM)
+      exit_with_error ("GPU_SIZE_X (%d) cannot exceed DIM (%d)", GPU_SIZE_X, DIM);
+  }
+
+  if (!GPU_SIZE_Y)
+    GPU_SIZE_Y = GPU_SIZE_X;
+
+  if (!GPU_TILE_W) {
+    str = getenv ("TILEX");
+    if (str != NULL)
+      GPU_TILE_W = atoi (str);
+    else
+      GPU_TILE_W = DEFAULT_GPU_TILE_SIZE;
+  }
+
+  if (!GPU_TILE_H) {
+    str = getenv ("TILEY");
+    if (str != NULL)
+      GPU_TILE_H = atoi (str);
+    else
+      GPU_TILE_H = GPU_TILE_W;
+  }
+
+  if (GPU_SIZE_X % GPU_TILE_W)
+    fprintf (stderr, "Warning: GPU_SIZE_X (%d) is not a multiple of GPU_TILE_W (%d)!\n",
+             GPU_SIZE_X, GPU_TILE_W);
+
+  if (GPU_SIZE_Y % GPU_TILE_H)
+    fprintf (stderr, "Warning: GPU_SIZE_Y (%d) is not a multiple of GPU_TILE_H (%d)!\n",
+             GPU_SIZE_Y, GPU_TILE_H);
+
+  // Load program source into memory
+  //
+  sprintf (buffer, "kernel/ocl/%s.cl", kernel_name);
+  const char *opencl_prog = file_load (buffer);
+
+  // Attach program source to context
+  //
+  program = clCreateProgramWithSource (context, 1, &opencl_prog, NULL, &err);
+  check (err, "Failed to create program");
+
+  // Compile program
+  //
+  if (draw_param)
+    sprintf (buffer,
+             "-cl-mad-enable -cl-fast-relaxed-math"
+             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s"
+             " -DPARAM=%s",
+             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name, draw_param);
+  else
+    sprintf (
+        buffer,
+        "-cl-mad-enable -cl-fast-relaxed-math"
+        " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s",
+        DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name);
+
+  err = clBuildProgram (program, 0, NULL, buffer, NULL, NULL);
+
+  // Display compiler log
+  //
+  {
+    size_t len;
+
+    clGetProgramBuildInfo (program, chosen_device, CL_PROGRAM_BUILD_LOG, 0,
+                           NULL, &len);
+
+    if (len > 1 && len <= 2048) {
+      char buffer[len];
+
+      fprintf (stderr, "--- OpenCL Compiler log ---\n");
+      clGetProgramBuildInfo (program, chosen_device, CL_PROGRAM_BUILD_LOG,
+                             sizeof (buffer), buffer, NULL);
+      fprintf (stderr, "%s\n", buffer);
+      fprintf (stderr, "---------------------------\n");
+    }
+  }
+
+  if (err != CL_SUCCESS)
+    exit_with_error ("Failed to build program");
+
+  if (list_variants)
+    ocl_list_variants ();
 
   // Create the compute kernel in the program we wish to run
   //
-  {
-    char name[1024];
+  sprintf (buffer, "%s_%s", kernel_name, variant_name);
+  compute_kernel = clCreateKernel (program, buffer, &err);
+  check (err, "Failed to create compute kernel <%s>", buffer);
 
-    sprintf (name, "%s_%s", kernel_name, variant_name);
-    compute_kernel = clCreateKernel (program, name, &err);
-    check (err, "Failed to create compute kernel <%s>", name);
+  PRINT_DEBUG ('o', "Using OpenCL kernel: %s_%s\n", kernel_name, variant_name);
 
-    PRINT_DEBUG ('o', "Using OpenCL kernel: %s\n", variant_name);
+  sprintf (buffer, "%s_update_texture", kernel_name);
 
-    sprintf (name, "%s_update_texture", kernel_name);
-
-    // First look for kernel-specific version of update_texture
-    update_kernel = clCreateKernel (program, name, &err);
-    if (err != CL_SUCCESS) {
-      // Fall back to generic version
-      update_kernel = clCreateKernel (program, "update_texture", &err);
-      check (err, "Failed to create update kernel <update_texture>");
-    }
+  // First look for kernel-specific version of update_texture
+  update_kernel = clCreateKernel (program, buffer, &err);
+  if (err != CL_SUCCESS) {
+    // Fall back to generic version
+    update_kernel = clCreateKernel (program, "update_texture", &err);
+    check (err, "Failed to create update kernel <update_texture>");
   }
 
-  printf ("Using %dx%d workitems grouped in %dx%d tiles \n", SIZE, SIZE, TILEX,
-          TILEY);
+  calibrate ();
+
+  printf ("Using %dx%d workitems grouped in %dx%d tiles \n", GPU_SIZE_X, GPU_SIZE_Y,
+          GPU_TILE_W, GPU_TILE_H);
+}
+
+void ocl_send_data (void)
+{
+  cl_int err;
+  cl_event event;
 
   err = clEnqueueWriteBuffer (queue, cur_buffer, CL_TRUE, 0,
                               sizeof (unsigned) * DIM * DIM, image, 0, NULL,
-                              NULL);
+                              &event);
   check (err, "Failed to write to cur_buffer");
 
   err = clEnqueueWriteBuffer (queue, next_buffer, CL_TRUE, 0,
                               sizeof (unsigned) * DIM * DIM, alt_image, 0, NULL,
-                              NULL);
+                              &event);
   check (err, "Failed to write to next_buffer");
 
   PRINT_DEBUG (
       'i', "Init phase 7 : Initial image data transferred to OpenCL device\n");
 }
 
-void ocl_retrieve_image (unsigned *image)
+void ocl_retrieve_data (void)
 {
+  cl_int err;
+
   err =
       clEnqueueReadBuffer (queue, cur_buffer, CL_TRUE, 0,
                            sizeof (unsigned) * DIM * DIM, image, 0, NULL, NULL);
   check (err, "Failed to read from cur_buffer");
 
-  PRINT_DEBUG ('o', "Final image retrieved from device.\n");
+  PRINT_DEBUG ('o', "Image retrieved from device.\n");
 }
 
 static cl_event prof_event;
 
 unsigned ocl_invoke_kernel_generic (unsigned nb_iter)
 {
-  size_t global[2] = {SIZE, SIZE};   // global domain size for our calculation
-  size_t local[2]  = {TILEX, TILEY}; // local domain size for our calculation
+  size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y}; // global domain size for our calculation
+  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H}; // local domain size for our calculation
+  cl_int err;
 
   for (unsigned it = 1; it <= nb_iter; it++) {
 
@@ -465,6 +571,7 @@ void ocl_update_texture (void)
 {
   size_t global[2] = {DIM, DIM}; // global domain size for our calculation
   size_t local[2]  = {16, 16};   // local domain size for our calculation
+  cl_int err;
 
   ocl_acquire ();
 
@@ -487,4 +594,46 @@ void ocl_update_texture (void)
 size_t ocl_get_max_workgroup_size (void)
 {
   return max_workgroup_size;
+}
+
+static inline long ocl_start_time (cl_event evt)
+{
+  cl_ulong t_start;
+
+  clGetEventProfilingInfo (evt, CL_PROFILING_COMMAND_START, sizeof (cl_ulong),
+                           &t_start, NULL);
+
+  return (long)(t_start / 1000) + _calibration_delta;
+}
+
+static inline long ocl_end_time (cl_event evt)
+{
+  cl_ulong t_end;
+
+  clGetEventProfilingInfo (evt, CL_PROFILING_COMMAND_END, sizeof (cl_ulong),
+                           &t_end, NULL);
+
+  return (long)(t_end / 1000) + _calibration_delta;
+}
+
+long ocl_monitor (cl_event evt, int x, int y, int width, int height,
+                  task_type_t task_type)
+{
+  long start, end;
+  unsigned gpu_lane = easypap_requested_number_of_threads () +
+                      (task_type == TASK_TYPE_COMPUTE ? 0 : 1);
+
+  start = ocl_start_time (evt);
+  end   = ocl_end_time (evt);
+
+  long now = what_time_is_it ();
+  if (end > now) {
+    fprintf (stderr, "Warning: end of kernel ahead of current time by %ld µs\n", end - now);
+  }
+
+  PRINT_DEBUG ('m', "[%s] start: %ld, end: %ld\n", "kernel", start, end);
+
+  monitoring_gpu_tile (x, y, width, height, gpu_lane, start, end, task_type);
+
+  return end - start;
 }

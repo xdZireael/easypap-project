@@ -51,9 +51,9 @@ unsigned scrollup_compute_tiled (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int y = 0; y < DIM; y += TILE_SIZE)
-      for (int x = 0; x < DIM; x += TILE_SIZE)
-        do_tile (x, y, TILE_SIZE, TILE_SIZE, 0 /* CPU id */);
+    for (int y = 0; y < DIM; y += TILE_H)
+      for (int x = 0; x < DIM; x += TILE_W)
+        do_tile (x, y, TILE_W, TILE_H, 0 /* CPU id */);
 
     swap_images ();
 
@@ -63,9 +63,25 @@ unsigned scrollup_compute_tiled (unsigned nb_iter)
 }
 
 
-/////////////////////// OpenCL
+//////////// OpenCL version using mask (ocl_ouf)
+// Suggested cmdlines:
+// ./run -l images/shibuya.png -k scrollup -o -v ocl_ouf
+// or
+// ./run -l images/1024.png -k scrollup -o -v ocl_ouf -a data/misc/mask.bin
+//
 
 static cl_mem twin_buffer = 0, mask_buffer = 0;
+static char *mask_file = NULL;
+
+void scrollup_config_ocl_ouf (char *param)
+{
+  if (param && (access (param, R_OK) != -1)) {
+    // The parameter is a filename, so we guess it's a 1024x1024 mask
+    if (DIM != 1024)
+      exit_with_error ("scrollup-OpenCL-de-Ouf requires 1024x1024 images");
+    mask_file = param;
+  }
+}
 
 void scrollup_init_ocl_ouf (void)
 {
@@ -82,28 +98,40 @@ void scrollup_init_ocl_ouf (void)
 
 void scrollup_draw_ocl_ouf (char *param)
 {
-  const int size       = DIM * DIM * sizeof (unsigned);
+  const int size = DIM * DIM * sizeof (unsigned);
   cl_int err;
 
+  if (easypap_image_file == NULL)
+    exit_with_error ("scrollup is prettier when applied to an image!");
+
   unsigned *tmp = malloc (size);
+  if (mask_file) {
+    int fd = open (mask_file, O_RDONLY);
+    if (fd == -1)
+      exit_with_error ("Cannot open file %s", mask_file);
 
-  // Draw a quick-n-dirty circle
-  for (int i = 0; i < DIM; i++)
-    for (int j = 0; j < DIM; j++) {
-      const int mid = DIM/2;
-      int dist2 = (i - mid)*(i - mid) + (j - mid)*(j - mid);
-      const int r1 = (DIM/4)*(DIM/4);
-      const int r2 = (DIM/2)*(DIM/2);
-      if (dist2 < r1)
-        tmp[i * DIM + j] = 0xFF00FFFF;
-      else if (dist2 < r2)
-        tmp[i * DIM + j] = (((r2 - dist2)*255/(r2 - r1)) & 0xFF) | 0xFF00FF00;
-      else
-        tmp[i * DIM + j] = 0xFF00FF00;
-    }
-
+    int n = read (fd, tmp, size);
+    if (n != size)
+      exit_with_error ("Cannot read from file %s", mask_file);
+    close (fd);
+  } else {
+    // Draw a quick-n-dirty circle
+    for (int i = 0; i < DIM; i++)
+      for (int j = 0; j < DIM; j++) {
+        const int mid = DIM / 2;
+        int dist2     = (i - mid) * (i - mid) + (j - mid) * (j - mid);
+        const int r1  = (DIM / 4) * (DIM / 4);
+        const int r2  = (DIM / 2) * (DIM / 2);
+        if (dist2 < r1)
+          tmp[i * DIM + j] = 0xFF;
+        else if (dist2 < r2)
+          tmp[i * DIM + j] = ((r2 - dist2) * 255 / (r2 - r1)) & 0xFF;
+        else
+          tmp[i * DIM + j] = 0;
+      }
+  }
   // We send the mask buffer to GPU
-  // (not need to send twin_buffer : its contents will be erased during 1st
+  // (not need to send twin_buffer : its content will be erased during 1st
   // iteration)
   err = clEnqueueWriteBuffer (queue, mask_buffer, CL_TRUE, 0, size, tmp, 0,
                               NULL, NULL);
@@ -114,15 +142,14 @@ void scrollup_draw_ocl_ouf (char *param)
   img_data_replicate (); // Perform next_img = cur_img
 }
 
-// Suggested command line:
-// ./run -l images/1024.png -o -k scrollup -v ocl_ouf
 unsigned scrollup_invoke_ocl_ouf (unsigned nb_iter)
 {
-  size_t global[2] = {SIZE, SIZE}; // global domain size for our calculation
-  size_t local[2]  = {TILEX, TILEY}; // local domain size for our calculation
+  size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y}; // global domain size for our calculation
+  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H}; // local domain size for our calculation
   cl_int err;
 
   for (unsigned it = 1; it <= nb_iter; it++) {
+    unsigned color = 0xFF0000FF;
     // Set kernel arguments
     //
     err = 0;
@@ -130,6 +157,7 @@ unsigned scrollup_invoke_ocl_ouf (unsigned nb_iter)
     err |= clSetKernelArg (compute_kernel, 1, sizeof (cl_mem), &twin_buffer);
     err |= clSetKernelArg (compute_kernel, 2, sizeof (cl_mem), &cur_buffer);
     err |= clSetKernelArg (compute_kernel, 3, sizeof (cl_mem), &mask_buffer);
+    err |= clSetKernelArg (compute_kernel, 4, sizeof (unsigned), &color);
     check (err, "Failed to set kernel arguments");
 
     err = clEnqueueNDRangeKernel (queue, compute_kernel, 2, NULL, global, local,

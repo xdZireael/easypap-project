@@ -1,25 +1,44 @@
 #include "easypap.h"
 
+#include <omp.h>
 #include <stdbool.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
-static long unsigned int *TABLE = NULL;
+typedef unsigned long TYPE;
+
+static TYPE *TABLE = NULL;
 
 static volatile int changement;
 
-static unsigned long int max_grains;
+static TYPE max_grains;
 
-#define table(i, j) TABLE[(i)*DIM + (j)]
+static inline TYPE *table_cell (TYPE *restrict i, int y, int x)
+{
+  return i + y * DIM + x;
+}
 
-#define RGB(r, v, b) (((r) << 24 | (v) << 16 | (b) << 8) | 255)
+#define table(y, x) (*table_cell (TABLE, (y), (x)))
+
+#define RGB(r, g, b) rgba (r, g, b, 0xFF)
 
 void sable_init ()
 {
-  TABLE = calloc (DIM * DIM, sizeof (long unsigned int));
+  if (TABLE == NULL) {
+    const unsigned size = DIM * DIM * sizeof (TYPE);
+
+    PRINT_DEBUG ('u', "Memory footprint = 2 x %d bytes\n", size);
+
+    TABLE = mmap (NULL, size, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  }
 }
 
 void sable_finalize ()
 {
-  free (TABLE);
+  const unsigned size = DIM * DIM * sizeof (TYPE);
+
+  munmap (TABLE, size);
 }
 
 ///////////////////////////// Production d'une image
@@ -48,6 +67,75 @@ void sable_refresh_img ()
     }
   max_grains = max;
 }
+
+///////////////////////////// Version séquentielle simple (seq)
+
+static inline int compute_new_state (int y, int x)
+{
+  if (table (y, x) >= 4) {
+    unsigned long int div4 = table (y, x) / 4;
+    table (y, x - 1) += div4;
+    table (y, x + 1) += div4;
+    table (y - 1, x) += div4;
+    table (y + 1, x) += div4;
+    table (y, x) %= 4;
+    return 1;
+  }
+  return 0;
+}
+
+static int do_tile (int x, int y, int width, int height, int who)
+{
+  int chgt = 0;
+  PRINT_DEBUG ('c', "tuile [%d-%d][%d-%d] traitée\n", x, x + width - 1, y,
+               y + height - 1);
+
+  monitoring_start_tile (who);
+
+  for (int i = y; i < y + height; i++)
+    for (int j = x; j < x + width; j++) {
+      chgt |= compute_new_state (i, j);
+    }
+
+  monitoring_end_tile (x, y, width, height, who);
+  return chgt;
+}
+
+// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
+unsigned sable_compute_seq (unsigned nb_iter)
+{
+
+  for (unsigned it = 1; it <= nb_iter; it++) {
+    changement = 0;
+    // On traite toute l'image en un coup (oui, c'est une grosse tuile)
+    changement |= do_tile (1, 1, DIM - 2, DIM - 2, 0);
+    if (changement == 0)
+      return it;
+  }
+  return 0;
+}
+
+///////////////////////////// Version séquentielle tuilée (tiled)
+
+unsigned sable_compute_tiled (unsigned nb_iter)
+{
+  for (unsigned it = 1; it <= nb_iter; it++) {
+    changement = 0;
+
+    for (int y = 0; y < DIM; y += TILE_H)
+      for (int x = 0; x < DIM; x += TILE_W)
+        changement |= do_tile (x + (x == 0), y + (y == 0),
+                               TILE_W - ((x + TILE_W == DIM) + (x == 0)),
+                               TILE_H - ((y + TILE_H == DIM) + (y == 0)),
+                               0 /* CPU id */);
+    if (changement == 0)
+      return it;
+  }
+
+  return 0;
+}
+
+
 
 ///////////////////////////// Configurations initiales
 
@@ -79,73 +167,10 @@ void sable_draw_DIM (void)
 void sable_draw_alea (void)
 {
   max_grains = 5000;
-  for (int i = 0; i<DIM>> 3; i++) {
+  for (int i = 0; i< DIM>>3; i++) {
     int i = 1 + random () % (DIM - 2);
     int j = 1 + random () % (DIM - 2);
     int grains = 1000 + (random () % (4000));
     cur_img (i, j) = table (i, j) = grains;
   }
-}
-
-///////////////////////////// Version séquentielle simple (seq)
-
-static inline void compute_new_state (int y, int x)
-{
-  if (table (y, x) >= 4) {
-    unsigned long int div4 = table (y, x) / 4;
-    table (y, x - 1) += div4;
-    table (y, x + 1) += div4;
-    table (y - 1, x) += div4;
-    table (y + 1, x) += div4;
-    table (y, x) %= 4;
-    changement = 1;
-  }
-}
-
-static void do_tile (int x, int y, int width, int height, int who)
-{
-  PRINT_DEBUG ('c', "tuile [%d-%d][%d-%d] traitée\n", x, x + width - 1, y,
-               y + height - 1);
-
-  monitoring_start_tile (who);
-
-  for (int i = y; i < y + height; i++)
-    for (int j = x; j < x + width; j++) {
-      compute_new_state (i, j);
-    }
-  monitoring_end_tile (x, y, width, height, who);
-}
-
-// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-unsigned sable_compute_seq (unsigned nb_iter)
-{
-
-  for (unsigned it = 1; it <= nb_iter; it++) {
-    changement = 0;
-    // On traite toute l'image en un coup (oui, c'est une grosse tuile)
-    do_tile (1, 1, DIM - 2, DIM - 2, 0);
-    if (changement == 0)
-      return it;
-  }
-  return 0;
-}
-
-///////////////////////////// Version séquentielle tuilée (tiled)
-
-unsigned sable_compute_tiled (unsigned nb_iter)
-{
-  for (unsigned it = 1; it <= nb_iter; it++) {
-    changement = 0;
-
-    for (int y = 0; y < DIM; y += TILE_SIZE)
-      for (int x = 0; x < DIM; x += TILE_SIZE)
-        do_tile (x + (x == 0), y + (y == 0),
-                 TILE_SIZE - ((x + TILE_SIZE == DIM) + (x == 0)),
-                 TILE_SIZE - ((y + TILE_SIZE == DIM) + (y == 0)),
-                 0 /* CPU id */);
-    if (changement == 0)
-      return it;
-  }
-
-  return 0;
 }

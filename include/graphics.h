@@ -4,11 +4,9 @@
 
 #ifdef ENABLE_SDL
 
-#include <SDL.h>
-
 #include "global.h"
 
-extern unsigned WIN_WIDTH, WIN_HEIGHT;
+#include <SDL.h>
 
 void graphics_init (void);
 void graphics_alloc_images (void);

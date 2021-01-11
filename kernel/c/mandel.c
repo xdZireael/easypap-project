@@ -43,15 +43,15 @@ static inline void do_tile (int x, int y, int width, int height, int who)
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline:
-// ./run -k mandel -v tiled -g 16
+// ./run -k mandel -v tiled -ts 64
 //
 unsigned mandel_compute_tiled (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int y = 0; y < DIM; y += TILE_SIZE)
-      for (int x = 0; x < DIM; x += TILE_SIZE)
-        do_tile (x, y, TILE_SIZE, TILE_SIZE, 0);
+    for (int y = 0; y < DIM; y += TILE_H)
+      for (int x = 0; x < DIM; x += TILE_W)
+        do_tile (x, y, TILE_W, TILE_H, 0);
 
     zoom ();
   }
@@ -74,10 +74,8 @@ static float ystep;
 
 void mandel_init ()
 {
-#ifdef ENABLE_VECTO
-  if (TILE_SIZE < VEC_SIZE)
-    exit_with_error ("TILE_SIZE (%d) is lower than VEC_SIZE (%d)", TILE_SIZE, VEC_SIZE);
-#endif
+  // check tile size's conformity with respect to CPU vector width
+  // easypap_check_vectorization (VEC_TYPE_FLOAT, DIR_HORIZONTAL);
 
   xstep = (rightX - leftX) / DIM;
   ystep = (topY - bottomY) / DIM;

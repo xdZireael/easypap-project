@@ -13,3 +13,5 @@ Most of the parameters can be specified as command line arguments, when running 
 * interactive mode / performance mode
 * monitoring mode
 * and much more!
+
+Please read the [Getting Started Guide](https://gforgeron.gitlab.io/easypap/doc/Getting_Started.pdf) before you start!

@@ -42,15 +42,15 @@ static inline void do_tile (int x, int y, int width, int height, int who)
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline:
-// ./run -l images/shibuya.png -k transpose -v tiled -g 16
+// ./run -l images/shibuya.png -k transpose -v tiled -ts 64
 //
 unsigned transpose_compute_tiled (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int y = 0; y < DIM; y += TILE_SIZE)
-      for (int x = 0; x < DIM; x += TILE_SIZE)
-        do_tile (x, y, TILE_SIZE, TILE_SIZE, 0);
+    for (int y = 0; y < DIM; y += TILE_H)
+      for (int x = 0; x < DIM; x += TILE_W)
+        do_tile (x, y, TILE_W, TILE_H, 0);
 
     swap_images ();
   }

@@ -97,7 +97,7 @@ unsigned max_compute_seq (unsigned nb_iter)
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline(s):
-// ./run -l images/spirale.png -k max -v tiled -g 16 -m
+// ./run -l images/spirale.png -k max -v tiled -ts 32
 //
 unsigned max_compute_tiled (unsigned nb_iter)
 {
@@ -107,15 +107,13 @@ unsigned max_compute_tiled (unsigned nb_iter)
     int change = 0;
 
     // Bottom-right propagation
-    for (int i = 0; i < GRAIN; i++)
-      for (int j = 0; j < GRAIN; j++)
-        change |= tile_down_right (j * TILE_SIZE, i * TILE_SIZE, TILE_SIZE,
-                                       TILE_SIZE, 0);
+    for (int i = 0; i < NB_TILES_Y; i++)
+      for (int j = 0; j < NB_TILES_X; j++)
+        change |= tile_down_right (j * TILE_W, i * TILE_H, TILE_W, TILE_H, 0);
     // Up-left propagation
-    for (int i = GRAIN - 1; i >= 0; i--)
-      for (int j = GRAIN - 1; j >= 0; j--)
-        change |= tile_up_left (j * TILE_SIZE, i * TILE_SIZE, TILE_SIZE,
-                                    TILE_SIZE, 0);
+    for (int i = NB_TILES_Y - 1; i >= 0; i--)
+      for (int j = NB_TILES_X - 1; j >= 0; j--)
+        change |= tile_up_left (j * TILE_W, i * TILE_H, TILE_W, TILE_H, 0);
 
     if (!change) {
       res = it;

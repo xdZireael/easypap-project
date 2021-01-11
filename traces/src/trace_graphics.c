@@ -47,12 +47,13 @@
 #define TILE_ALPHA 0x80
 #define BUTTON_ALPHA 60
 
-static SDL_Texture **square_tex  = NULL;
-static SDL_Texture *black_square = NULL;
-static SDL_Texture *white_square = NULL;
+static SDL_Texture **square_tex_bright = NULL;
+static SDL_Texture **square_tex_dark   = NULL;
+static SDL_Texture *black_square       = NULL;
+static SDL_Texture *white_square       = NULL;
 
 #ifdef PRELOAD_THUMBNAILS
-static SDL_Texture **thumb_tex = NULL;
+static SDL_Texture **thumb_tex[MAX_TRACES] = {NULL, NULL};
 #endif
 
 static int TASK_HEIGHT   = MAX_TASK_HEIGHT;
@@ -89,21 +90,24 @@ static int horiz_mode     = 0;
 
 static long start_time = 0, end_time = 0, duration = 0;
 
-static int mouse_x = -1, mouse_y = -1;
+static long selection_start_time = 0, selection_duration = 0;
+static long mouse_orig_time    = 0;
+static int mouse_x             = -1;
+static int mouse_y             = -1;
 static int mouse_in_gantt_zone = 0;
-static SDL_Rect mouse_selection;
-static int mouse_orig_x = -1;
-static int mouse_down   = 0;
+static int mouse_down          = 0;
 
 static int max_cores = -1, max_iterations = -1;
 static long max_time = -1;
 
-int use_thumbnails = 1;
+int use_thumbnails       = 1;
+unsigned char brightness = 150;
+unsigned soft_rendering  = 0;
 
 static SDL_Color silver_color  = {192, 192, 192, 255};
 static SDL_Color backgrd_color = {50, 50, 65, 255};
 
-extern char *trace_dir; // Defined in main.c
+extern char *trace_dir[]; // Defined in main.c
 
 struct
 {
@@ -137,6 +141,25 @@ static unsigned layout_get_min_height (void)
         TOP_MARGIN + 2 * MIN_PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
     gantt_h = (trace[0].nb_cores + trace[1].nb_cores) *
                   (MIN_TASK_HEIGHT + 2 * Y_MARGIN + 2) +
+              INTERTRACE_MARGIN;
+    need_left = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
+  }
+  return max (need_left, need_right);
+}
+
+static unsigned layout_get_max_height (void)
+{
+  unsigned need_left, need_right, gantt_h;
+
+  if (nb_traces == 1) {
+    need_right = TOP_MARGIN + MAX_PREVIEW_DIM + BOTTOM_MARGIN;
+    gantt_h    = trace[0].nb_cores * (MAX_TASK_HEIGHT + 2 * Y_MARGIN + 2);
+    need_left  = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
+  } else {
+    need_right =
+        TOP_MARGIN + 2 * MAX_PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
+    gantt_h = (trace[0].nb_cores + trace[1].nb_cores) *
+                  (MAX_TASK_HEIGHT + 2 * Y_MARGIN + 2) +
               INTERTRACE_MARGIN;
     need_left = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
   }
@@ -307,28 +330,51 @@ static int get_y_mouse_sibbling (void)
   return mouse_y;
 }
 
+static inline int is_gpu (trace_t *const tr, int cpu_num)
+{
+  return cpu_num >= (tr->nb_cores - tr->nb_gpu);
+}
+
+static inline int is_lane (trace_t *const tr, int cpu_num)
+{
+  int tot = tr->nb_cores - tr->nb_gpu;
+  if (cpu_num >= tot)
+    return (cpu_num - tot) & 1; // #GPU is odd
+
+  return 0;
+}
+
 // Texture creation functions
 
 static void preload_thumbnails (unsigned nb_iter)
 {
   if (use_thumbnails) {
-    thumb_tex        = malloc (nb_iter * sizeof (SDL_Texture *));
     unsigned success = 0;
-    for (int iter = 0; iter < nb_iter; iter++) {
-      SDL_Surface *thumb = NULL;
-      char filename[1024];
+    unsigned nb_dirs = trace_dir[1] ? 2 : 1;
 
-      sprintf (filename, "%s/thumb_%04d.png", trace_dir, iter + 1);
-      thumb = IMG_Load (filename);
+    thumb_tex[0] = malloc (nb_iter * sizeof (SDL_Texture *));
+    if (nb_dirs == 2)
+      thumb_tex[1] = malloc (nb_iter * sizeof (SDL_Texture *));
+    else
+      thumb_tex[1] = thumb_tex[0];
 
-      if (thumb != NULL) {
-        success++;
+    for (int dir = 0; dir < nb_dirs; dir++)
+      for (int iter = 0; iter < nb_iter; iter++) {
+        SDL_Surface *thumb = NULL;
+        char filename[1024];
 
-        thumb_tex[iter] = SDL_CreateTextureFromSurface (renderer, thumb);
-        SDL_FreeSurface (thumb);
-      } else
-        thumb_tex[iter] = NULL;
-    }
+        sprintf (filename, "%s/thumb_%04d.png", trace_dir[dir], iter + 1);
+        thumb = IMG_Load (filename);
+
+        if (thumb != NULL) {
+          success++;
+
+          thumb_tex[dir][iter] = SDL_CreateTextureFromSurface (renderer, thumb);
+          SDL_FreeSurface (thumb);
+          SDL_SetTextureAlphaMod (thumb_tex[dir][iter], brightness);
+        } else
+          thumb_tex[dir][iter] = NULL;
+      }
 
     printf ("%d/%u thumbnails successfully preloaded\n", success, nb_iter);
   }
@@ -394,13 +440,15 @@ static void create_task_textures (unsigned nb_cores)
   SDL_FillRect (s, NULL, 0xFFFFFFFF); // white
   white_square = SDL_CreateTextureFromSurface (renderer, s);
 
-  square_tex = malloc ((MAX_COLORS + 1) * sizeof (SDL_Texture *));
+  square_tex_bright = malloc ((MAX_COLORS + 1) * sizeof (SDL_Texture *));
+  square_tex_dark   = malloc ((MAX_COLORS + 1) * sizeof (SDL_Texture *));
 
   for (int c = 0; c < MAX_COLORS + 1; c++) {
     SDL_FillRect (s, NULL, cpu_colors[c]);
-    square_tex[c] = SDL_CreateTextureFromSurface (renderer, s);
-    // By default, tiles are semi-transparent
-    SDL_SetTextureAlphaMod (square_tex[c], TILE_ALPHA);
+    square_tex_bright[c] = SDL_CreateTextureFromSurface (renderer, s);
+    square_tex_dark[c]   = SDL_CreateTextureFromSurface (renderer, s);
+    // Dark tiles are semi-transparent
+    SDL_SetTextureAlphaMod (square_tex_dark[c], TILE_ALPHA);
   }
 
   SDL_FreeSurface (s);
@@ -425,7 +473,7 @@ static void create_digit_textures (TTF_Font *font)
     SDL_FreeSurface (s);
   }
 
-  SDL_Surface *s = TTF_RenderText_Blended (font, "us", white_color);
+  SDL_Surface *s = TTF_RenderUTF8_Blended (font, "µs", white_color);
   if (s == NULL)
     exit_with_error ("TTF_RenderText_Solid failed: %s", SDL_GetError ());
 
@@ -477,6 +525,22 @@ static void create_tab_textures (TTF_Font *font)
   }
 }
 
+static void blit_on_surface (SDL_Surface *surface, TTF_Font *font, int trace,
+                             unsigned line, char *msg)
+{
+  SDL_Rect dst;
+  SDL_Surface *s = TTF_RenderText_Blended (font, msg, silver_color);
+  if (s == NULL)
+    exit_with_error ("TTF_RenderText_Solid failed: %s", SDL_GetError ());
+
+  dst.x = LEFT_MARGIN - s->w;
+  dst.y = trace_display_info[trace].gantt.y + CPU_ROW_HEIGHT * line +
+          CPU_ROW_HEIGHT / 2 - (s->h / 2);
+
+  SDL_BlitSurface (s, NULL, surface, &dst);
+  SDL_FreeSurface (s);
+}
+
 static void create_cpu_textures (TTF_Font *font)
 {
   SDL_Surface *surface =
@@ -485,23 +549,22 @@ static void create_cpu_textures (TTF_Font *font)
   if (surface == NULL)
     exit_with_error ("SDL_CreateRGBSurface failed: %s", SDL_GetError ());
 
-  for (int t = 0; t < nb_traces; t++)
+  for (int t = 0; t < nb_traces; t++) {
     for (int c = 0; c < trace[t].nb_cores; c++) {
       char msg[32];
-      SDL_Rect dst;
-      snprintf (msg, 32, "CPU %2d ", c);
+      if (is_gpu (trace + t, c)) {
+        int lane = c - (trace[t].nb_cores - trace[t].nb_gpu);
+        int gpu  = lane >> 1;
+        if (lane & 1)
+          snprintf (msg, 32, "<-> G %d ", gpu);
+        else
+          snprintf (msg, 32, "GPU %2d ", gpu);
+      } else
+        snprintf (msg, 32, "CPU %2d ", c);
 
-      SDL_Surface *s = TTF_RenderText_Blended (font, msg, silver_color);
-      if (s == NULL)
-        exit_with_error ("TTF_RenderText_Solid failed: %s", SDL_GetError ());
-
-      dst.x = LEFT_MARGIN - s->w;
-      dst.y = trace_display_info[t].gantt.y + CPU_ROW_HEIGHT * c +
-              CPU_ROW_HEIGHT / 2 - (s->h / 2);
-
-      SDL_BlitSurface (s, NULL, surface, &dst);
-      SDL_FreeSurface (s);
+      blit_on_surface (surface, font, t, c, msg);
     }
+  }
 
   if (text_texture == NULL)
     SDL_DestroyTexture (text_texture);
@@ -601,16 +664,15 @@ static void show_tile (trace_t *tr, trace_task_t *t, unsigned cpu,
                        unsigned highlight)
 {
   SDL_Rect dst;
+  unsigned task_color =
+      is_lane (tr, cpu) ? gpu_index[t->task_type] : (cpu % MAX_COLORS);
 
   get_tile_rect (tr, t, &dst);
 
-  if (highlight)
-    SDL_SetTextureAlphaMod (square_tex[cpu % MAX_COLORS], 0xFF);
-
-  SDL_RenderCopy (renderer, square_tex[cpu % MAX_COLORS], NULL, &dst);
-
-  if (highlight)
-    SDL_SetTextureAlphaMod (square_tex[cpu % MAX_COLORS], TILE_ALPHA);
+  SDL_RenderCopy (
+      renderer,
+      (highlight ? square_tex_bright[task_color] : square_tex_dark[task_color]),
+      NULL, &dst);
 }
 
 static void display_tab (unsigned trace_num)
@@ -688,7 +750,7 @@ static void display_iter_number (unsigned iter, unsigned y_offset,
   }
 }
 
-static void display_duration (unsigned task_duration, unsigned x_offset,
+static void display_duration (unsigned long task_duration, unsigned x_offset,
                               unsigned y_offset, unsigned max_size)
 {
   unsigned digits[10];
@@ -720,14 +782,27 @@ static void display_duration (unsigned task_duration, unsigned x_offset,
   SDL_RenderCopy (renderer, us_tex, NULL, &dst);
 }
 
+static void display_selection (void)
+{
+  if (selection_duration > 0) {
+    SDL_Rect dst;
+
+    dst.x = time_to_pixel (selection_start_time);
+    dst.y = trace_display_info[0].gantt.y;
+    dst.w =
+        time_to_pixel (selection_start_time + selection_duration) - dst.x + 1;
+    dst.h = GANTT_HEIGHT;
+
+    SDL_SetRenderDrawColor (renderer, 255, 255, 255, 100);
+    SDL_RenderFillRect (renderer, &dst);
+
+    display_duration (selection_duration, dst.x + dst.w / 2, dst.y + dst.h / 2,
+                      0);
+  }
+}
+
 static void display_mouse_selection (trace_task_t *t)
 {
-  // Click & Drag selection
-  if (mouse_down) {
-    SDL_SetRenderDrawColor (renderer, 255, 255, 255, 100);
-    SDL_RenderFillRect (renderer, &mouse_selection);
-  }
-
   if (horiz_mode) {
     // horizontal bar
     if (mouse_in_gantt_zone) {
@@ -794,8 +869,7 @@ static void display_tile_background (int tr)
 
       if (iter != -1 && iter != displayed_iter[tr]) {
         displayed_iter[tr] = iter;
-        // if (thumb_tex != NULL)
-        tex[tr] = thumb_tex[iter];
+        tex[tr]            = thumb_tex[tr][iter];
       }
     }
   }
@@ -917,6 +991,7 @@ static void trace_graphics_display (void)
     int selected_cpu             = 0;
     unsigned wh                  = trace_display_info[_t].gantt.y + Y_MARGIN;
 
+    // (max_cores +1) is for data transfers...
     bzero (to_be_emphasized, max_cores * sizeof (trace_task_t *));
 
     // Set clipping region
@@ -937,6 +1012,7 @@ static void trace_graphics_display (void)
     int my        = mouse_y;
     int in_mosaic = 0;
 
+    // Normalize (mx, my) mouse coordinates
     if (mouse_in_gantt_zone) {
       if (horiz_mode && point_inside_gantt (1 - _t, mx, my)) {
         my = get_y_mouse_sibbling ();
@@ -961,10 +1037,10 @@ static void trace_graphics_display (void)
     // tiles
     if (first_it < tr->nb_iterations)
       for (int c = 0; c < tr->nb_cores; c++) {
-
         // We get a pointer on the first task executed by
         // CPU 'c' at first displayed iteration
         trace_task_t *first = tr->iteration[first_it].first_cpu_task[c];
+        unsigned task_color = c % MAX_COLORS;
 
         if (first != NULL)
           // We follow the list of tasks, starting from this first task
@@ -986,6 +1062,15 @@ static void trace_graphics_display (void)
             dst.y = wh;
             dst.w = time_to_pixel (task_end_time (tr, t)) - dst.x + 1;
             dst.h = TASK_HEIGHT;
+
+            // If task is a GPU tranfer lane, modify height, y-offset and color
+            if (is_lane (tr, c)) {
+              dst.h = TASK_HEIGHT / 2;
+              if (t->task_type == TASK_TYPE_READ)
+                dst.y += TASK_HEIGHT / 2;
+
+              task_color = gpu_index[t->task_type];
+            }
 
             // Check if mouse is within the bounds of the gantt zone
             if (mouse_in_gantt_zone) {
@@ -1009,12 +1094,10 @@ static void trace_graphics_display (void)
                   dst.w += 6;
                   dst.h += 6;
                 }
-
-                // postpone display of corresponding tile
                 to_be_emphasized[c] = t;
               }
 
-              SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL, &dst);
+              SDL_RenderCopy (renderer, perf_fill[task_color], NULL, &dst);
 
             } else if (in_mosaic) {
               SDL_Rect r;
@@ -1026,16 +1109,19 @@ static void trace_graphics_display (void)
                   target_tile      = 1;
                   target_tile_rect = r;
                 }
-                SDL_RenderCopy (renderer, perf_fill[MAX_COLORS], NULL, &dst);
+                SDL_RenderCopy (renderer, perf_fill[MAX_COLORS], NULL,
+                                &dst); // that is: white
               } else
-                SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL,
-                                &dst);
+                SDL_RenderCopy (renderer, perf_fill[task_color], NULL, &dst);
             } else
-              SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL, &dst);
+              SDL_RenderCopy (renderer, perf_fill[task_color], NULL, &dst);
           }
 
         wh += CPU_ROW_HEIGHT;
       }
+
+    // Display mouse selection rectangle (if any)
+    display_selection ();
 
     // Disable clipping region
     SDL_RenderSetClipRect (renderer, NULL);
@@ -1044,7 +1130,7 @@ static void trace_graphics_display (void)
 
     if (target_tile)
       // Display mouse-selected tile in white color
-      SDL_RenderCopy (renderer, square_tex[MAX_COLORS], NULL,
+      SDL_RenderCopy (renderer, square_tex_dark[MAX_COLORS], NULL,
                       &target_tile_rect);
     else if (horiz_mode) {
       if (selected_first != NULL)
@@ -1065,10 +1151,12 @@ static void trace_graphics_display (void)
     } else {
       // Display tiles corresponding to tasks intersecting with mouse "iso x"
       // axis
-      for (int c = 0; c < tr->nb_cores; c++)
-        if (to_be_emphasized[c] != NULL)
+      for (int c = 0; c < tr->nb_cores; c++) {
+        if (to_be_emphasized[c] != NULL) {
           show_tile (tr, to_be_emphasized[c], c,
                      (to_be_emphasized[c] == selected_task));
+        }
+      }
     }
 
   } // for (_t)
@@ -1112,6 +1200,7 @@ static void set_bounds (long start, long end)
 static void update_bounds (void)
 {
   long start, end;
+  int li[2];
 
   if (trace_ctrl[0].first_displayed_iter > trace[0].nb_iterations)
     start = iteration_start_time (
@@ -1129,17 +1218,18 @@ static void update_bounds (void)
                                   1));
 
   if (trace_ctrl[0].last_displayed_iter > trace[0].nb_iterations)
-    end =
-        iteration_end_time (trace + nb_traces - 1,
-                            trace_ctrl[nb_traces - 1].last_displayed_iter - 1);
-  else if (trace_ctrl[nb_traces - 1].last_displayed_iter >
-           trace[nb_traces - 1].nb_iterations)
-    end = iteration_end_time (trace, trace_ctrl[0].last_displayed_iter - 1);
+    li[0] = trace[0].nb_iterations - 1;
   else
-    end = max (
-        iteration_end_time (trace, trace_ctrl[0].last_displayed_iter - 1),
-        iteration_end_time (trace + nb_traces - 1,
-                            trace_ctrl[nb_traces - 1].last_displayed_iter - 1));
+    li[0] = trace_ctrl[0].last_displayed_iter - 1;
+
+  if (trace_ctrl[nb_traces - 1].last_displayed_iter >
+      trace[nb_traces - 1].nb_iterations)
+    li[1] = trace[nb_traces - 1].nb_iterations - 1;
+  else
+    li[1] = trace_ctrl[nb_traces - 1].last_displayed_iter - 1;
+
+  end = max (iteration_end_time (trace, li[0]),
+             iteration_end_time (trace + nb_traces - 1, li[1]));
 
   set_bounds (start, end);
 }
@@ -1304,30 +1394,67 @@ void trace_graphics_zoom_out (void)
   }
 }
 
+void trace_graphics_zoom_to_selection (void)
+{
+  if (selection_duration > 0) {
+    long start = selection_start_time;
+    long end   = selection_start_time + selection_duration;
+
+    if (selection_duration < MIN_DURATION) {
+      long delta = (MIN_DURATION - selection_duration) / 2;
+      if (start < delta)
+        start = 0;
+      else
+        start -= delta;
+      end = start + MIN_DURATION;
+      if (end > max_time) {
+        end   = max_time;
+        start = end - MIN_DURATION;
+      }
+    }
+
+    set_bounds (start, end);
+    trace_graphics_set_quick_nav (0);
+
+    selection_duration = 0;
+
+    trace_graphics_display ();
+  }
+}
+
 void trace_graphics_mouse_moved (int x, int y)
 {
   mouse_x = x;
   mouse_y = y;
 
-  if (point_inside_gantts (x, y)) {
+  if (point_inside_gantts (x, y))
     mouse_in_gantt_zone = 1;
-  } else {
+  else
     mouse_in_gantt_zone = 0;
 
-    if (mouse_down) {
-      if (!point_in_yrange (&gantts_bounding_box, y))
-        mouse_down = 0;
-      else if (x < trace_display_info[0].gantt.x)
-        x = trace_display_info[0].gantt.x;
-      else if (x > trace_display_info[0].gantt.x +
-                       trace_display_info[0].gantt.w - 1)
-        x = trace_display_info[0].gantt.x + trace_display_info[0].gantt.w - 1;
-    }
-  }
-
   if (mouse_down) {
-    mouse_selection.x = min (mouse_orig_x, x);
-    mouse_selection.w = max (mouse_orig_x, x) - mouse_selection.x + 1;
+    // Check if mouse in out-of-range on the x-axis
+    if (point_in_yrange (&gantts_bounding_box, y)) {
+      if (x < trace_display_info[0].gantt.x) {
+        x = trace_display_info[0].gantt.x;
+        trace_graphics_scroll (-1);
+      } else if (x > trace_display_info[0].gantt.x +
+                         trace_display_info[0].gantt.w - 1) {
+        x = trace_display_info[0].gantt.x + trace_display_info[0].gantt.w - 1;
+        trace_graphics_scroll (1);
+      }
+    }
+
+    long new_pos = pixel_to_time (x);
+
+    if (new_pos < mouse_orig_time) {
+      selection_start_time = new_pos;
+      selection_duration   = mouse_orig_time - new_pos;
+    } else {
+      selection_start_time = mouse_orig_time;
+      selection_duration   = new_pos - mouse_orig_time;
+    }
+
   }
 
   trace_graphics_display ();
@@ -1336,36 +1463,19 @@ void trace_graphics_mouse_moved (int x, int y)
 void trace_graphics_mouse_down (int x, int y)
 {
   if (point_inside_gantts (x, y)) {
-    mouse_orig_x = x;
 
-    mouse_selection.x = x;
-    mouse_selection.y = trace_display_info[0].gantt.y;
-    mouse_selection.w = 0;
-    mouse_selection.h = GANTT_HEIGHT;
+    mouse_orig_time    = pixel_to_time (x);
+    selection_duration = 0;
 
     mouse_down = 1;
+
+    trace_graphics_display ();
   }
 }
 
 void trace_graphics_mouse_up (int x, int y)
 {
-  if (mouse_down) {
-
-    mouse_down = 0;
-
-    if (mouse_selection.w > 0) {
-      long start = pixel_to_time (mouse_selection.x);
-      long end   = pixel_to_time (mouse_selection.x + mouse_selection.w);
-
-      if (end < start + MIN_DURATION)
-        end = start + MIN_DURATION;
-
-      set_bounds (start, end);
-      trace_graphics_set_quick_nav (0);
-
-      trace_graphics_display ();
-    }
-  }
+  mouse_down = 0;
 }
 
 void trace_graphics_setview (int first, int last)
@@ -1483,8 +1593,13 @@ void trace_graphics_init (unsigned w, unsigned h)
                   iteration_end_time (trace + nb_traces - 1,
                                       trace[nb_traces - 1].nb_iterations - 1));
 
-  WINDOW_WIDTH  = max (w, layout_get_min_width ());
-  WINDOW_HEIGHT = max (h, layout_get_min_height ());
+  const unsigned min_width  = layout_get_min_width ();
+  const unsigned min_height = layout_get_min_height ();
+
+  WINDOW_WIDTH  = max (w, min_width);
+  WINDOW_HEIGHT = max (h, min_height);
+
+  WINDOW_HEIGHT = min (WINDOW_HEIGHT, layout_get_max_height ());
 
   layout_recompute ();
 
@@ -1504,12 +1619,17 @@ void trace_graphics_init (unsigned w, unsigned h)
   if (window == NULL)
     exit_with_error ("SDL_CreateWindow");
 
-  SDL_SetWindowMinimumSize (window, layout_get_min_width (),
-                            layout_get_min_height ());
+  SDL_SetWindowMinimumSize (window, min_width, min_height);
 
   // No Vsync provides a (much) smoother experience
-  renderer = SDL_CreateRenderer (
-      window, -1, SDL_RENDERER_ACCELERATED /* | SDL_RENDERER_PRESENTVSYNC */);
+  Uint32 render_flags = 0;
+
+  if (soft_rendering)
+    render_flags = SDL_RENDERER_SOFTWARE;
+  else
+    render_flags = SDL_RENDERER_ACCELERATED;
+
+  renderer = SDL_CreateRenderer (window, -1, render_flags);
   if (renderer == NULL)
     exit_with_error ("SDL_CreateRenderer");
 

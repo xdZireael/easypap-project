@@ -2,8 +2,21 @@
 #ifndef GLOBAL_IS_DEF
 #define GLOBAL_IS_DEF
 
-#include "hooks.h"
-#include "img_data.h"
+// Images are DIM * DIM arrays of pixels
+// Tiles have a size of CPU_TILE_H * CPU_TILE_W
+// An image contains CPU_NBTILES_Y * CPU_NBTILES_X
+
+extern unsigned DIM;
+
+extern unsigned TILE_W;
+extern unsigned TILE_H;
+extern unsigned NB_TILES_X;
+extern unsigned NB_TILES_Y;
+
+extern unsigned GPU_TILE_W;
+extern unsigned GPU_TILE_H;
+extern unsigned GPU_SIZE_X;
+extern unsigned GPU_SIZE_Y;
 
 extern unsigned do_display;
 extern unsigned vsync;
@@ -17,14 +30,6 @@ extern char *draw_param;
 extern unsigned opencl_used;
 extern unsigned easypap_mpirun;
 
-
 extern char *kernel_name, *variant_name;
-
-unsigned easypap_requested_number_of_threads (void);
-unsigned easypap_number_of_cores (void);
-int easypap_mpi_rank (void);
-int easypap_mpi_size (void);
-void easypap_check_mpi (void);
-int easypap_proc_is_master (void);
 
 #endif

@@ -1,6 +1,8 @@
 
 #include "graphics.h"
+#include "img_data.h"
 #include "constants.h"
+#include "time_macros.h"
 #include "debug.h"
 #include "error.h"
 #include "global.h"
@@ -16,8 +18,8 @@
 #include <sys/mman.h>
 #include <time.h>
 
-unsigned WIN_WIDTH  = 1024;
-unsigned WIN_HEIGHT = 1024;
+static unsigned WIN_WIDTH  = 1024;
+static unsigned WIN_HEIGHT = 1024;
 
 #define FONT_HEIGHT 24
 
@@ -194,7 +196,7 @@ void graphics_init (void)
   if (do_display) {
     char title[1024];
     int x = SDL_WINDOWPOS_CENTERED;
-    int y = SDL_WINDOWPOS_CENTERED;
+    int y = 0;
 
     if (easypap_mpirun) {
       sprintf (
@@ -306,7 +308,7 @@ void graphics_init (void)
 
   SDL_SetTextureBlendMode (texture, SDL_BLENDMODE_BLEND);
 
-  PRINT_DEBUG ('i', "Init phase 1: SDL initialized (DIM = %d)\n", DIM);
+  PRINT_DEBUG ('i', "Init phase 0: SDL initialized (DIM = %d)\n", DIM);
 }
 
 void graphics_alloc_images (void)
@@ -332,7 +334,7 @@ void graphics_alloc_images (void)
     SDL_FreeSurface (temporary_surface);
     temporary_surface = NULL;
 
-    // graphics_image_clean ();
+    //graphics_image_clean ();
   }
 }
 
@@ -419,13 +421,13 @@ void graphics_save_thumbnail (unsigned iteration)
 
   SDL_FillRect (mini_surface, NULL, 0);
 
-  SDL_SetSurfaceAlphaMod (s, 170);
+  //SDL_SetSurfaceAlphaMod (s, 170);
 
   SDL_BlitScaled (s,                  /* src */
                   NULL, mini_surface, /* dest */
                   NULL);
 
-  SDL_SetSurfaceAlphaMod (s, 255);
+  //SDL_SetSurfaceAlphaMod (s, 255);
 
   int r = IMG_SavePNG (mini_surface, filename);
 
@@ -436,10 +438,28 @@ void graphics_save_thumbnail (unsigned iteration)
 
 int graphics_get_event (SDL_Event *event, int blocking)
 {
+  int r;
+#if 0
+  // FIXME: investigate why the first call to SDL_PollEvent takes so much time ob MacOS
+  long temps;
+  struct timeval t1, t2;
+
+  gettimeofday (&t1, NULL);
+#endif
+
   if (blocking)
-    return SDL_WaitEvent (event);
+    r = SDL_WaitEvent (event);
   else
-    return SDL_PollEvent (event);
+    r = SDL_PollEvent (event);
+
+#if 0
+  gettimeofday (&t2, NULL);
+
+  temps = TIME_DIFF (t1, t2);
+
+  PRINT_MASTER ("SDL_PollEvent(blocking=%d) took %ld.%03ld ms\n", blocking, temps / 1000, temps % 1000);
+#endif
+  return r;
 }
 
 void graphics_clean (void)

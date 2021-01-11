@@ -49,7 +49,19 @@
     if (do_gmonitor | do_trace) {                                              \
       long t = what_time_is_it ();                                             \
       gmonitor_end_tile (t, (c), (x), (y), (w), (h));                          \
-      trace_record_end_tile (t, (c), (x), (y), (w), (h));                      \
+      trace_record_end_tile (t, (c), (x), (y), (w), (h), TASK_TYPE_COMPUTE);   \
+    }                                                                          \
+  } while (0)
+
+#define monitoring_gpu_tile(x, y, w, h, c, s, e, tr)                           \
+  do {                                                                         \
+    if (do_gmonitor | do_trace) {                                              \
+      if ((tr) == TASK_TYPE_COMPUTE)                                           \
+        gmonitor_start_tile ((s), (c));                                        \
+      trace_record_start_tile ((s), (c));                                      \
+      if ((tr) == TASK_TYPE_COMPUTE)                                           \
+        gmonitor_end_tile ((e), (c), (x), (y), (w), (h));                      \
+      trace_record_end_tile ((e), (c), (x), (y), (w), (h), (tr));              \
     }                                                                          \
   } while (0)
 
@@ -87,11 +99,19 @@
     }                                                                          \
   } while (0)
 
-#define monitoring_end_tile(x, y, w, h, c)                                     \
+#define monitoring_end_tile(x, y, w, h, c, tr)                                 \
   do {                                                                         \
     if (do_trace) {                                                            \
       long t = what_time_is_it ();                                             \
-      trace_record_end_tile (t, (c), (x), (y), (w), (h));                      \
+      trace_record_end_tile (t, (c), (x), (y), (w), (h), TASK_TYPE_COMPUTE);   \
+    }                                                                          \
+  } while (0)
+
+#define monitoring_gpu_tile(x, y, w, h, c, s, e, tr)                           \
+  do {                                                                         \
+    if (do_trace) {                                                            \
+      trace_record_start_tile ((s), (c));                                      \
+      trace_record_end_tile ((e), (c), (x), (y), (w), (h), (tr));              \
     }                                                                          \
   } while (0)
 
@@ -103,6 +123,7 @@
 #define monitoring_end_iteration() (void)0
 #define monitoring_start_tile(c) (void)0
 #define monitoring_end_tile(x, y, w, h, c) (void)0
+#define monitoring_gpu_tile(x, y, w, h, c, s, e, tr) (void)0
 
 #endif
 

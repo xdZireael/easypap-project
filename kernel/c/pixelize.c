@@ -75,10 +75,8 @@ unsigned pixelize_compute_seq (unsigned nb_iter)
 }
 
 
-//////////////////// Draw functions
-
-// The "draw" parameter is used to fix the size of pixelized blocks
-void pixelize_draw (char *param)
+// The parameter is used to fix the size of pixelized blocks
+void pixelize_config (char *param)
 {
   unsigned n;
 
@@ -90,12 +88,51 @@ void pixelize_draw (char *param)
       if (PIX_BLOC & (PIX_BLOC - 1))
         exit_with_error ("PIX_BLOC is not a power of two");
 
-#ifdef ENABLE_VECTO
-      if (PIX_BLOC < VEC_SIZE)
-        exit_with_error ("PIX_BLOC values lower than VEC_SIZE (%d) are currently not supported", VEC_SIZE);
-#endif
-      LOG_BLOC = log2_of_power_of_2 (PIX_BLOC);
+      LOG_BLOC   = log2_of_power_of_2 (PIX_BLOC);
       LOG_BLOCx2 = 2 * LOG_BLOC;
     }
   }
+}
+
+///////////////////////////// OpenCL big variant (ocl_big)
+
+unsigned pixelize_invoke_ocl (unsigned nb_iter)
+{
+  size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y};
+  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H};
+  cl_int err;
+
+  for (unsigned it = 1; it <= nb_iter; it++) {
+
+    // Set kernel arguments
+    //
+    err = 0;
+    err |= clSetKernelArg (compute_kernel, 0, sizeof (cl_mem), &cur_buffer);
+    check (err, "Failed to set kernel arguments");
+
+    err = clEnqueueNDRangeKernel (queue, compute_kernel, 2, NULL, global, local,
+                                  0, NULL, NULL);
+    check (err, "Failed to execute kernel");
+  }
+
+  return 0;
+}
+
+void pixelize_config_ocl (char *param)
+{
+  pixelize_config (param);
+
+  if (PIX_BLOC > 16)
+    exit_with_error ("PIX_BLOC too large (> 16) for OpenCL variant.");
+}
+
+void pixelize_init_ocl (void)
+{
+  if (GPU_TILE_W != GPU_TILE_H)
+    exit_with_error ("Tiles should have a square shape (%d != %d)", GPU_TILE_W,
+                     GPU_TILE_H);
+
+  if (GPU_TILE_W < PIX_BLOC || (GPU_TILE_W % PIX_BLOC != 0))
+    exit_with_error ("Tile size (%d) must be a multiple of PIX_BLOC (%d)",
+                     GPU_TILE_W, PIX_BLOC);
 }

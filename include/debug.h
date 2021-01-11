@@ -17,11 +17,12 @@
 //      'u' -- user
 //      'M' -- MPI
 
+#include "global.h"
+#include "api_funcs.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "global.h"
 
 void debug_init (char *flags);
 int debug_enabled (char flag);

@@ -1,9 +1,9 @@
 #ifndef IMG_DATA_IS_DEF
 #define IMG_DATA_IS_DEF
 
-#include <stdint.h>
+#include "global.h"
 
-extern unsigned DIM, GRAIN, TILE_SIZE;
+#include <stdint.h>
 
 extern uint32_t *restrict image, *restrict alt_image;
 
@@ -53,5 +53,9 @@ static inline uint32_t rgba (int r, int g, int b, int a)
 {
   return (r << 24) | (g << 16) | (b << 8) | a;
 }
+
+unsigned hsv_to_rgb (float h, float s, float v);
+unsigned heat_to_rgb (float h); // 0.0 = cold, 1.0 = hot
+unsigned heat_to_3gauss_rgb (double v); // 0.0 = cold, 1.0 = hot
 
 #endif

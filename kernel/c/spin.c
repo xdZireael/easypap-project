@@ -15,8 +15,11 @@ static unsigned compute_color (int i, int j);
 // function <kernel>_init is searched in turn.
 void spin_init (void)
 {
+  // check tile size's conformity with respect to CPU vector width
+  // easypap_check_vectorization (VEC_TYPE_FLOAT, DIR_HORIZONTAL);
+
   PRINT_DEBUG ('u', "Image size is %dx%d\n", DIM, DIM);
-  PRINT_DEBUG ('u', "Block size is %dx%d\n", TILE_SIZE, TILE_SIZE);
+  PRINT_DEBUG ('u', "Block size is %dx%d\n", TILE_W, TILE_H);
   PRINT_DEBUG ('u', "Press <SPACE> to pause/unpause, <ESC> to quit.\n");
 }
 
@@ -73,32 +76,17 @@ static void do_tile (int x, int y, int width, int height, int who)
 }
 
 
-unsigned spin_compute_line (unsigned nb_iter)
-{
-  for (unsigned it = 1; it <= nb_iter; it++) {
-
-    for (int i = 0; i < DIM; i++)
-      do_tile (0, i, DIM, 1, omp_get_thread_num ());
-
-    rotate (); // Slightly increase the base angle
-  }
-
-  return 0;
-}
-
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline(s):
-// ./run -k spin -v tiled -g 16 -m
-// or
 // ./run -k spin -v tiled -ts 64 -m
 //
 unsigned spin_compute_tiled (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int y = 0; y < DIM; y += TILE_SIZE)
-      for (int x = 0; x < DIM; x += TILE_SIZE)
-        do_tile (x, y, TILE_SIZE, TILE_SIZE, 0 /* CPU id */);
+    for (int y = 0; y < DIM; y += TILE_H)
+      for (int x = 0; x < DIM; x += TILE_W)
+        do_tile (x, y, TILE_W, TILE_H, 0 /* CPU id */);
 
     rotate ();
   }
@@ -106,50 +94,6 @@ unsigned spin_compute_tiled (unsigned nb_iter)
   return 0;
 }
 
-///////////////////////////// MPI version (mpi)
-// Suggested cmdline(s):
-// ./run -k spin -v mpi -mpi "-np 2" -d M -m
-//
-#ifdef ENABLE_MPI
-
-static int mpi_y    = -1;
-static int mpi_h    = -1;
-static int mpi_rank = -1;
-static int mpi_size = -1;
-
-void spin_init_mpi (void)
-{
-  easypap_check_mpi (); // check if MPI was correctly configured
-
-  MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);
-  MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
-
-  if (mpi_size & (mpi_size - 1))
-    exit_with_error ("This implementation requires 'MPI_Comm_size' to be "
-                     "a power of two");
-
-  mpi_y = mpi_rank * (DIM / mpi_size);
-  mpi_h = (DIM / mpi_size);
-
-  PRINT_DEBUG ('M', "In charge of slice [%d-%d]\n", mpi_y, mpi_y + mpi_h - 1);
-}
-
-unsigned spin_compute_mpi (unsigned nb_iter)
-{
-  for (unsigned it = 1; it <= nb_iter; it++) {
-
-    do_tile (0, mpi_y, DIM, mpi_h, 0);
-
-    rotate ();
-  }
-
-  MPI_Gather ((mpi_rank == 0 ? MPI_IN_PLACE : image + mpi_y * DIM), mpi_h * DIM,
-              MPI_INT, image, mpi_h * DIM, MPI_INT, 0, MPI_COMM_WORLD);
-
-  return 0;
-}
-
-#endif
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -162,7 +106,6 @@ static float atanf_approx (float x)
   float a = fabsf (x);
 
   return x * M_PI / 4 + 0.273 * x * (1 - a);
-  // return  x * M_PI / 4 - x * (a - 1) * (0.2447 + 0.0663 * a);
 }
 
 static float atan2f_approx (float y, float x)

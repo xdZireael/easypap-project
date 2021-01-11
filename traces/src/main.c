@@ -21,22 +21,25 @@ static int first_iteration = -1;
 static int last_iteration  = -1;
 static int whole_trace     = 0;
 
-char *trace_dir = DEFAULT_EZV_TRACE_DIR;
+static unsigned nb_dir = 0;
+char *trace_dir[MAX_TRACES] = { NULL, NULL };
 
 static void usage (char *progname, int val)
 {
   fprintf (stderr, "Usage: %s [options] {file ...}\n", progname);
   fprintf (stderr, "options can be:\n");
 
+  fprintf (stderr, "\t-a\t| --align\t\t: align iterations\n");
+  fprintf (stderr, "\t-c\t| --compare\t\t: compare last two traces\n");
   fprintf (stderr, "\t-d\t| --dir <dir>\t\t: specify trace directory\n");
   fprintf (stderr, "\t-h\t| --help\t\t: display help\n");
-  fprintf (stderr, "\t-nt\t| --no-thumb\t\t: ignore thumbnails\n");
   fprintf (stderr, "\t-i\t| --iteration <i>\t: display iteration i\n");
+  fprintf (stderr, "\t-nt\t| --no-thumb\t\t: ignore thumbnails\n");
+  fprintf (stderr,
+           "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
   fprintf (stderr,
            "\t-r\t| --range <i> <j>\t: display iteration range [i-j]\n");
   fprintf (stderr, "\t-w\t| --whole-trace\t\t: display all iterations\n");
-  fprintf (stderr, "\t-c\t| --compare\t\t: compare last two traces\n");
-  fprintf (stderr, "\t-a\t| --align\t\t: align iterations\n");
 
   exit (val);
 }
@@ -53,6 +56,16 @@ static char **filter_args (int *argc, char *argv[])
       use_thumbnails = 0;
     } else if (!strcmp (*argv, "--align") || !strcmp (*argv, "-a")) {
       trace_data_align_mode = 1;
+    } else if (!strcmp (*argv, "--brightness") || !strcmp (*argv, "-b")) {
+      if (*argc <= 1) {
+        fprintf (stderr, "Error: parameter (number) missing\n");
+        usage (progname, 1);
+      }
+      (*argc)--;
+      argv++;
+      brightness = atoi (*argv);
+    } else if (!strcmp (*argv, "--soft-rendering") || !strcmp (*argv, "-sr")) {
+      soft_rendering = 1;
     } else if (!strcmp (*argv, "--whole-trace") || !strcmp (*argv, "-w")) {
       whole_trace = 1;
     } else if (!strcmp (*argv, "--help") || !strcmp (*argv, "-h")) {
@@ -83,7 +96,10 @@ static char **filter_args (int *argc, char *argv[])
       }
       (*argc)--;
       argv++;
-      trace_dir = *argv;
+      if (nb_dir == MAX_TRACES)
+        exit_with_error ("Cannot not specify more than two traces directories");
+
+      trace_dir[nb_dir++] = *argv;
     } else {
       break;
     }
@@ -91,6 +107,9 @@ static char **filter_args (int *argc, char *argv[])
     (*argc)--;
     argv++;
   }
+
+  if (trace_dir[0] == NULL)
+    trace_dir[0] = DEFAULT_EZV_TRACE_DIR;
 
   return argv;
 }
@@ -103,8 +122,14 @@ int main (int argc, char **argv)
   case 0: {
     char file[1024];
 
-    sprintf (file, "%s/%s", trace_dir, DEFAULT_EZV_TRACE_FILE);
+    sprintf (file, "%s/%s", trace_dir[0], DEFAULT_EZV_TRACE_FILE);
     trace_file_load (file);
+
+    if (trace_dir[1] != NULL) {
+      sprintf (file, "%s/%s", trace_dir[1], DEFAULT_EZV_TRACE_FILE);
+      trace_file_load (file);
+    }
+
     break;
   }
   case 1: {
@@ -165,6 +190,9 @@ int main (int argc, char **argv)
           break;
         case SDLK_x:
           trace_graphics_toggle_vh_mode ();
+          break;
+        case SDLK_z:
+          trace_graphics_zoom_to_selection ();
           break;
         case SDLK_ESCAPE:
         case SDLK_q:

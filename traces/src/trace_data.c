@@ -39,16 +39,18 @@ void trace_data_init (trace_t *tr, unsigned num)
 
   tr->num           = num;
   tr->nb_cores      = 1;
+  tr->nb_gpu        = 0;
   tr->per_cpu       = NULL;
   tr->nb_iterations = 0;
   tr->label         = NULL;
 }
 
-void trace_data_set_nb_cores (trace_t *tr, unsigned nb_cores)
+void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores, unsigned nb_gpu)
 {
-  tr->nb_cores = nb_cores;
-  tr->per_cpu  = malloc (nb_cores * sizeof (trace_task_t));
-  for (int i = 0; i < nb_cores; i++)
+  tr->nb_cores = nb_cores + nb_gpu;
+  tr->nb_gpu = nb_gpu;
+  tr->per_cpu  = malloc (tr->nb_cores * sizeof (trace_task_t));
+  for (int i = 0; i < tr->nb_cores; i++)
     INIT_LIST_HEAD (tr->per_cpu + i);
 }
 
@@ -65,7 +67,7 @@ void trace_data_set_label (trace_t *tr, char *label)
 
 void trace_data_add_task (trace_t *tr, long start_time, long end_time,
                           unsigned x, unsigned y, unsigned w, unsigned h,
-                          unsigned iteration, unsigned cpu)
+                          unsigned iteration, unsigned cpu, task_type_t task_type)
 {
   trace_task_t *t = malloc (sizeof (trace_task_t));
 
@@ -76,6 +78,7 @@ void trace_data_add_task (trace_t *tr, long start_time, long end_time,
   t->w          = w;
   t->h          = h;
   t->iteration  = iteration;
+  t->task_type = task_type;
 
   list_add_tail (&t->cpu_chain, tr->per_cpu + cpu);
 
@@ -244,7 +247,7 @@ void trace_data_sync_iterations (void)
     return;
   }
 
-  long cur_correction[MAX_TRACES] = { 0 };
+  long cur_correction[MAX_TRACES] = {0};
   unsigned min_it = min (trace[0].nb_iterations, trace[1].nb_iterations);
 
   for (int it = 0; it < min_it; it++) {
@@ -253,8 +256,10 @@ void trace_data_sync_iterations (void)
     trace[1].iteration[it].correction = cur_correction[1];
 
     // We compare durations
-    long d0 = trace[0].iteration[it].end_time - trace[0].iteration[it].start_time;
-    long d1 = trace[1].iteration[it].end_time - trace[1].iteration[it].start_time;
+    long d0 =
+        trace[0].iteration[it].end_time - trace[0].iteration[it].start_time;
+    long d1 =
+        trace[1].iteration[it].end_time - trace[1].iteration[it].start_time;
     if (d0 < d1) {
       trace[0].iteration[it].gap = d1 - d0;
       // We update accumulated adjustment

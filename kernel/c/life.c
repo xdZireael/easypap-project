@@ -26,7 +26,6 @@ static inline cell_t *table_cell (cell_t *restrict i, int y, int x)
 
 void life_init (void)
 {
-
   // life_init may be (indirectly) called several times so we check if data were
   // already allocated
   if (_table == NULL) {
@@ -70,8 +69,8 @@ static inline void swap_tables (void)
 
 static int compute_new_state (int y, int x)
 {
-  unsigned n  = 0;
-  unsigned me = cur_table (y, x) != 0;
+  unsigned n      = 0;
+  unsigned me     = cur_table (y, x) != 0;
   unsigned change = 0;
 
   if (x > 0 && x < DIM - 1 && y > 0 && y < DIM - 1) {
@@ -146,9 +145,9 @@ unsigned life_compute_tiled (unsigned nb_iter)
   for (unsigned it = 1; it <= nb_iter; it++) {
     unsigned change = 0;
 
-    for (int y = 0; y < DIM; y += TILE_SIZE)
-      for (int x = 0; x < DIM; x += TILE_SIZE)
-        change |= do_tile (x, y, TILE_SIZE, TILE_SIZE, 0);
+    for (int y = 0; y < DIM; y += TILE_H)
+      for (int x = 0; x < DIM; x += TILE_W)
+        change |= do_tile (x, y, TILE_W, TILE_H, 0);
 
     swap_tables ();
 
@@ -161,18 +160,9 @@ unsigned life_compute_tiled (unsigned nb_iter)
   return res;
 }
 
-
 ///////////////////////////// Initial configs
 
-void life_draw_stable (void);
 void life_draw_guns (void);
-void life_draw_random (void);
-void life_draw_clown (void);
-void life_draw_diehard (void);
-void life_draw_bugs (void);
-void life_draw_otca_off (void);
-void life_draw_otca_on (void);
-void life_draw_meta3x3 (void);
 
 static inline void set_cell (int y, int x)
 {
@@ -200,7 +190,7 @@ static void inline life_rle_generate (char *filename, int x, int y, int width,
 
 void life_draw (char *param)
 {
-  if (access (param, R_OK) != -1) {
+  if (param && (access (param, R_OK) != -1)) {
     // The parameter is a filename, so we guess it's a RLE-encoded file
     life_rle_parse (param, 1, 1, RLE_ORIENTATION_NORMAL);
   } else
@@ -232,7 +222,7 @@ static void at_the_four_corners (char *filename, int distance)
                   RLE_ORIENTATION_HINVERT | RLE_ORIENTATION_VINVERT);
 }
 
-// Suggested cmdline: ./run -k life -s 2176 -a otca_off -ts 64 -r 10
+// Suggested cmdline: ./run -k life -s 2176 -a otca_off -ts 64 -r 10 -si
 void life_draw_otca_off (void)
 {
   if (DIM < 2176)
@@ -241,7 +231,7 @@ void life_draw_otca_off (void)
   otca_autoswitch ("data/rle/otca-off.rle", 1, 1);
 }
 
-// Suggested cmdline: ./run -k life -s 2176 -a otca_on -ts 64 -r 10
+// Suggested cmdline: ./run -k life -s 2176 -a otca_on -ts 64 -r 10 -si
 void life_draw_otca_on (void)
 {
   if (DIM < 2176)
@@ -250,7 +240,7 @@ void life_draw_otca_on (void)
   otca_autoswitch ("data/rle/otca-on.rle", 1, 1);
 }
 
-// Suggested cmdline: ./run -k life -s 6208 -a meta3x3 -ts 64 -r 50
+// Suggested cmdline: ./run -k life -s 6208 -a meta3x3 -ts 64 -r 50 -si
 void life_draw_meta3x3 (void)
 {
   if (DIM < 6208)
@@ -265,9 +255,27 @@ void life_draw_meta3x3 (void)
 // Suggested cmdline: ./run -k life -a bugs -ts 64
 void life_draw_bugs (void)
 {
-  for (int y = 0; y < DIM / 2; y += 32) {
-    life_rle_parse ("data/rle/tagalong.rle", y + 1, y + 8, RLE_ORIENTATION_NORMAL);
-    life_rle_parse ("data/rle/tagalong.rle", y + 1, (DIM - 32 - y) + 8, RLE_ORIENTATION_NORMAL);
+  for (int y = 16; y < DIM / 2; y += 32) {
+    life_rle_parse ("data/rle/tagalong.rle", y + 1, y + 8,
+                    RLE_ORIENTATION_NORMAL);
+    life_rle_parse ("data/rle/tagalong.rle", y + 1, (DIM - 32 - y) + 8,
+                    RLE_ORIENTATION_NORMAL);
+  }
+}
+
+// Suggested cmdline: ./run -k life -v omp -a ship -s 512 -m -ts 16
+void life_draw_ship (void)
+{
+  for (int y = 16; y < DIM / 2; y += 32) {
+    life_rle_parse ("data/rle/tagalong.rle", y + 1, y + 8,
+                    RLE_ORIENTATION_NORMAL);
+    life_rle_parse ("data/rle/tagalong.rle", y + 1, (DIM - 32 - y) + 8,
+                    RLE_ORIENTATION_NORMAL);
+  }
+
+  for (int y = 43; y < DIM - 134; y += 148) {
+    life_rle_parse ("data/rle/greyship.rle", DIM - 100, y,
+                    RLE_ORIENTATION_NORMAL);
   }
 }
 
@@ -295,7 +303,7 @@ void life_draw_random (void)
         set_cell (i, j);
 }
 
-// Suggested cmdline: ./run -k life -s 256 -a clown -i 110
+// Suggested cmdline: ./run -k life -a clown -s 256 -i 110
 void life_draw_clown (void)
 {
   life_rle_parse ("data/rle/clown-seed.rle", DIM / 2, DIM / 2,
@@ -304,5 +312,6 @@ void life_draw_clown (void)
 
 void life_draw_diehard (void)
 {
-  life_rle_parse ("data/rle/diehard.rle", DIM / 2, DIM / 2, RLE_ORIENTATION_NORMAL);
+  life_rle_parse ("data/rle/diehard.rle", DIM / 2, DIM / 2,
+                  RLE_ORIENTATION_NORMAL);
 }

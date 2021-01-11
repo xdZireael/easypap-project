@@ -54,8 +54,6 @@ unsigned do_gmonitor = 0;
 static unsigned MONITOR_WIDTH  = 0;
 static unsigned MONITOR_HEIGHT = 0;
 
-static unsigned NBCORES = 1;
-
 static SDL_Window *win      = NULL;
 static SDL_Renderer *ren    = NULL;
 static SDL_Texture *texture = NULL;
@@ -64,8 +62,6 @@ static Uint32 *restrict trace_img = NULL;
 
 void gmonitor_init (int x, int y)
 {
-  NBCORES = easypap_requested_number_of_threads ();
-
   MONITOR_WIDTH  = 352;
   MONITOR_HEIGHT = 352;
 
@@ -136,8 +132,11 @@ void __gmonitor_end_tile (long time, int who, int x, int y, int width,
                           int height)
 {
   long duration __attribute__ ((unused)) = cpustat_finish_work (time, who);
+  long t1, t2;
   unsigned color                         = cpu_colors[who % MAX_COLORS];
 
+  t1 = what_time_is_it ();
+  
 #ifdef LOAD_INTENSITY
   if (duration > max_duration)
     max_duration = duration;
@@ -158,7 +157,9 @@ void __gmonitor_end_tile (long time, int who, int x, int y, int width,
     for (int j = x; j < x + width; j++)
       trace_img[i * DIM + j] = color;
 
-  cpustat_start_idle (what_time_is_it (), who);
+  t2 = what_time_is_it ();
+
+  cpustat_deduct_idle (t2 - t1, who);
 }
 
 void __gmonitor_end_iteration (long time)

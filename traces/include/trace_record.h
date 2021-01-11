@@ -7,12 +7,12 @@
 
 extern unsigned do_trace;
 
-void trace_record_init (char *file, unsigned cpu, unsigned dim, char *label);
+void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim, char *label);
 void __trace_record_start_iteration (long time);
 void __trace_record_end_iteration (long time);
 void __trace_record_start_tile (long time, unsigned cpu);
 void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
-                              unsigned w, unsigned h);
+                              unsigned w, unsigned h, int transfert);
 void trace_record_finalize (void);
 
 #define trace_record_start_iteration(t)                                        \
@@ -33,10 +33,10 @@ void trace_record_finalize (void);
       __trace_record_start_tile ((t), (c));                                    \
   } while (0)
 
-#define trace_record_end_tile(t, c, x, y, w, h)                                \
+#define trace_record_end_tile(t, c, x, y, w, h, tr)                                \
   do {                                                                         \
     if (do_trace)                                                              \
-      __trace_record_end_tile ((t), (c), (x), (y), (w), (h));                  \
+      __trace_record_end_tile ((t), (c), (x), (y), (w), (h), (tr));                  \
   } while (0)
 
 #else
@@ -46,7 +46,7 @@ void trace_record_finalize (void);
 #define trace_record_start_iteration(t) (void)0
 #define trace_record_end_iteration(t) (void)0
 #define trace_record_start_tile(t, c) (void)0
-#define trace_record_end_tile(t, c, x, y, w, h) (void)0
+#define trace_record_end_tile(t, c, x, y, w, h, tr) (void)0
 
 #endif
 

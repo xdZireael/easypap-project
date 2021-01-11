@@ -22,8 +22,8 @@ unsigned sample_compute_seq (unsigned nb_iter)
 //
 unsigned sample_invoke_ocl (unsigned nb_iter)
 {
-  size_t global[2] = {SIZE, SIZE};   // global domain size for our calculation
-  size_t local[2]  = {TILEX, TILEY}; // local domain size for our calculation
+  size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y};   // global domain size for our calculation
+  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H}; // local domain size for our calculation
   cl_int err;
 
   for (unsigned it = 1; it <= nb_iter; it++) {
