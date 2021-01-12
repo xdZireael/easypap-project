@@ -444,7 +444,7 @@ void ocl_build_program (int list_variants)
     clGetProgramBuildInfo (program, chosen_device, CL_PROGRAM_BUILD_LOG, 0,
                            NULL, &len);
 
-    if (len > 1 && len <= 2048) {
+    if (len > 2 && len <= 2048) {
       char buffer[len];
 
       fprintf (stderr, "--- OpenCL Compiler log ---\n");
