@@ -711,7 +711,7 @@ static void filter_args (int *argc, char *argv[])
     } else if (!strcmp (*argv, "--show-ocl") || !strcmp (*argv, "-so")) {
       show_ocl_config = 1;
       opencl_used     = 1;
-      do_display      = 0;
+      //do_display      = 0;
 #ifdef ENABLE_SDL
     } else if (!strcmp (*argv, "--show-iterations") || !strcmp (*argv, "-si")) {
       graphics_toggle_display_iteration_number ();
@@ -720,7 +720,7 @@ static void filter_args (int *argc, char *argv[])
                !strcmp (*argv, "-lov")) {
       list_ocl_variants = 1;
       opencl_used       = 1;
-      //do_display        = 0;
+      do_display        = 0;
     } else if (!strcmp (*argv, "--first-touch") || !strcmp (*argv, "-ft")) {
       do_first_touch = 1;
     } else if (!strcmp (*argv, "--monitoring") || !strcmp (*argv, "-m")) {
