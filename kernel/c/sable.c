@@ -5,7 +5,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-typedef unsigned long TYPE;
+typedef unsigned TYPE;
 
 static TYPE *TABLE = NULL;
 
