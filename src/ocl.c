@@ -29,7 +29,7 @@ static size_t max_workgroup_size = 0;
 
 static cl_platform_id chosen_platform = NULL;
 cl_device_id chosen_device            = NULL;
-static cl_program program; // compute program
+cl_program program; // compute program
 
 cl_context context;
 cl_kernel update_kernel;
@@ -317,7 +317,7 @@ static void ocl_list_variants (void)
     printf ("%s\n", buffer);
   }
 
-  exit (0);
+  exit (EXIT_SUCCESS);
 }
 
 #define CALIBRATION_BURST 4
@@ -614,9 +614,8 @@ long ocl_monitor (cl_event evt, int x, int y, int width, int height,
   end   = ocl_end_time (evt);
 
   long now = what_time_is_it ();
-  if (end > now) {
-    fprintf (stderr, "Warning: end of kernel (%s) ahead of current time by %ld µs\n", task_type == TASK_TYPE_COMPUTE ? "TASK_TYPE_COMPUTE" : "TASK_TYPE_TRANSFER", end - now);
-  }
+  if (end > now)
+    PRINT_DEBUG ('o', "Warning: end of kernel (%s) ahead of current time by %ld µs\n", task_type == TASK_TYPE_COMPUTE ? "TASK_TYPE_COMPUTE" : "TASK_TYPE_TRANSFER", end - now);
 
   PRINT_DEBUG ('m', "[%s] start: %ld, end: %ld\n", "kernel", start, end);
 
