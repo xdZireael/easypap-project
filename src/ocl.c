@@ -608,7 +608,7 @@ long ocl_monitor (cl_event evt, int x, int y, int width, int height,
                   task_type_t task_type)
 {
   long start, end;
-  unsigned gpu_lane = easypap_gpu_lane (TASK_TYPE_COMPUTE);
+  unsigned gpu_lane = easypap_gpu_lane (task_type);
 
   start = ocl_start_time (evt);
   end   = ocl_end_time (evt);
