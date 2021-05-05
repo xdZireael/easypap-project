@@ -179,12 +179,11 @@ static void set_default_trace_label (void)
     char *str = getenv ("OMP_SCHEDULE");
 
     if (str != NULL)
-      snprintf (trace_label, MAX_LABEL,
-                "%s_%s (%s) %d/%dx%d", kernel_name,
+      snprintf (trace_label, MAX_LABEL, "%s_%s (%s) %d/%dx%d", kernel_name,
                 variant_name, str, DIM, TILE_W, TILE_H);
     else
-      snprintf (trace_label, MAX_LABEL, "%s_%s %d/%dx%d",
-                kernel_name, variant_name, DIM, TILE_W, TILE_H);
+      snprintf (trace_label, MAX_LABEL, "%s_%s %d/%dx%d", kernel_name,
+                variant_name, DIM, TILE_W, TILE_H);
   }
 }
 
@@ -528,7 +527,7 @@ int main (int argc, char **argv)
             if (!opencl_used && the_refresh_img)
               the_refresh_img ();
 
-            if (do_thumbs && easypap_proc_is_master ()) {
+            if (do_thumbs) {
               static unsigned iter_no = 0;
 
               if (opencl_used) {
@@ -537,8 +536,9 @@ int main (int argc, char **argv)
                 else
                   ocl_retrieve_data ();
               }
-
-              graphics_save_thumbnail (++iter_no);
+              
+              if (easypap_proc_is_master ())
+                graphics_save_thumbnail (++iter_no);
             }
           }
 
@@ -585,7 +585,7 @@ int main (int argc, char **argv)
         monitoring_end_iteration ();
 
 #ifdef ENABLE_SDL
-        if (do_thumbs && easypap_proc_is_master ()) {
+        if (do_thumbs) {
           static unsigned iter_no = 0;
 
           if (the_refresh_img)
@@ -593,7 +593,8 @@ int main (int argc, char **argv)
           else if (opencl_used)
             ocl_retrieve_data ();
 
-          graphics_save_thumbnail (++iter_no);
+          if (easypap_proc_is_master ())
+            graphics_save_thumbnail (++iter_no);
         }
 #endif
 
@@ -619,19 +620,21 @@ int main (int argc, char **argv)
 
 #ifdef ENABLE_SDL
   // Check if final image should be dumped on disk
-  if (do_dump && easypap_proc_is_master ()) {
-
-    char filename[1024];
+  if (do_dump) {
 
     if (the_refresh_img)
       the_refresh_img ();
     else if (opencl_used)
       ocl_retrieve_data ();
 
-    sprintf (filename, "dump-%s-%s-dim-%d-iter-%d.png", kernel_name,
-             variant_name, DIM, iterations);
+    if (easypap_proc_is_master ()) {
+      char filename[1024];
 
-    graphics_dump_image_to_file (filename);
+      sprintf (filename, "dump-%s-%s-dim-%d-iter-%d.png", kernel_name,
+               variant_name, DIM, iterations);
+
+      graphics_dump_image_to_file (filename);
+    }
   }
 #endif
 
