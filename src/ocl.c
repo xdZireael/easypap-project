@@ -424,18 +424,22 @@ void ocl_build_program (int list_variants)
 
   // Compile program
   //
+  char *debug_str = "";
+  if (debug_enabled ('o'))
+    debug_str = "-DDEBUG=1";
+
   if (draw_param)
     sprintf (buffer,
              "-cl-mad-enable -cl-fast-relaxed-math"
              " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s"
-             " -DPARAM=%s",
-             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name, draw_param);
+             " -DPARAM=%s %s",
+             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name, draw_param, debug_str);
   else
     sprintf (
         buffer,
         "-cl-mad-enable -cl-fast-relaxed-math"
-        " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s",
-        DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name);
+        " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s %s",
+        DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name, debug_str);
 
   err = clBuildProgram (program, 0, NULL, buffer, NULL, NULL);
 
