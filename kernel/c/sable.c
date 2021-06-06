@@ -174,3 +174,9 @@ void sable_draw_alea (void)
     cur_img (i, j) = table (i, j) = grains;
   }
 }
+
+void sable_draw_big (void)
+{
+  const int i = DIM/2;
+  cur_img (i, i) = table (i, i) = 1000;
+}
