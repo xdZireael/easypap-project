@@ -52,27 +52,14 @@ unsigned spin_compute_seq (unsigned nb_iter)
 }
 
 
-// Tile inner computation
-static void do_tile_reg (int x, int y, int width, int height)
+// Tile computation
+int spin_do_tile_default (int x, int y, int width, int height)
 {
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++)
       cur_img (i, j) = compute_color (i, j);
-}
 
-static void do_tile (int x, int y, int width, int height, int who)
-{
-  // Calling monitoring_{start|end}_tile before/after actual computation allows
-  // to monitor the execution in real time (--monitoring) and/or to generate an
-  // execution trace (--trace).
-  // monitoring_start_tile only needs the cpu number
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  // In addition to the cpu number, monitoring_end_tile also needs the tile
-  // coordinates
-  monitoring_end_tile (x, y, width, height, who);
+  return 0;
 }
 
 

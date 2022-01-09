@@ -1,6 +1,7 @@
 #ifndef API_FUNCS_IS_DEF
 #define API_FUNCS_IS_DEF
 
+
 #include "trace_common.h"
 
 typedef enum {
@@ -22,7 +23,7 @@ unsigned easypap_gpu_lane (task_type_t task_type);
 int easypap_mpi_rank (void);
 int easypap_mpi_size (void);
 void easypap_check_mpi (void);
-void easypap_check_vectorization (vec_type_t vec_type, direction_t dir);
+void easypap_vec_check (unsigned vec_width_in_bytes, direction_t dir);
 int easypap_proc_is_master (void);
 
 

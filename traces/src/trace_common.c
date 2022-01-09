@@ -7,7 +7,8 @@ unsigned cpu_colors[MAX_COLORS + 1] = {
     0xAE4AFFFF, // Purple
     0x00FFFFFF, // Cyan
     0xB0B0B0FF, // Grey
-    0x0033EEFF, // Royal Blue
+    //0x0033EEFF, // Royal Blue
+    0x6464FFFF, // Blue
     0xFFBFF7FF, // Pale Pink
     0xFFD591FF, // Cream
     0xCFFFBFFF, // Pale Green

@@ -23,8 +23,27 @@ static unsigned log2_of_power_of_2 (unsigned v)
   return r;
 }
 
-// Tile inner computation
-static void do_tile_reg (int x, int y, int width, int height)
+// The parameter is used to fix the size of pixelized blocks
+void pixelize_config (char *param)
+{
+  unsigned n;
+
+  if (param != NULL) {
+
+    n = atoi (param);
+    if (n > 0) {
+      PIX_BLOC = n;
+      if (PIX_BLOC & (PIX_BLOC - 1))
+        exit_with_error ("PIX_BLOC is not a power of two");
+
+      LOG_BLOC   = log2_of_power_of_2 (PIX_BLOC);
+      LOG_BLOCx2 = 2 * LOG_BLOC;
+    }
+  }
+}
+
+// Tile computation
+int pixelize_do_tile_default (int x, int y, int width, int height)
 {
   unsigned r = 0, g = 0, b = 0, a = 0, mean;
 
@@ -47,15 +66,8 @@ static void do_tile_reg (int x, int y, int width, int height)
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++)
       cur_img (i, j) = mean;
-}
 
-static void do_tile (int x, int y, int width, int height, int who)
-{
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  monitoring_end_tile (x, y, width, height, who);
+  return 0;
 }
 
 ///////////////////////////// Simple sequential version (seq)
@@ -68,31 +80,12 @@ unsigned pixelize_compute_seq (unsigned nb_iter)
 
     for (int y = 0; y < DIM; y += PIX_BLOC)
       for (int x = 0; x < DIM; x += PIX_BLOC)
-        do_tile_reg (x, y, PIX_BLOC, PIX_BLOC);
+        do_tile (x, y, PIX_BLOC, PIX_BLOC, 0);
   }
 
   return 0;
 }
 
-
-// The parameter is used to fix the size of pixelized blocks
-void pixelize_config (char *param)
-{
-  unsigned n;
-
-  if (param != NULL) {
-
-    n = atoi (param);
-    if (n > 0) {
-      PIX_BLOC = n;
-      if (PIX_BLOC & (PIX_BLOC - 1))
-        exit_with_error ("PIX_BLOC is not a power of two");
-
-      LOG_BLOC   = log2_of_power_of_2 (PIX_BLOC);
-      LOG_BLOCx2 = 2 * LOG_BLOC;
-    }
-  }
-}
 
 ///////////////////////////// OpenCL big variant (ocl_big)
 

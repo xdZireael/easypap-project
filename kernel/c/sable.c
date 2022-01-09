@@ -84,31 +84,25 @@ static inline int compute_new_state (int y, int x)
   return 0;
 }
 
-static int do_tile (int x, int y, int width, int height, int who)
+int sable_do_tile_default (int x, int y, int width, int height)
 {
   int chgt = 0;
-  PRINT_DEBUG ('c', "tuile [%d-%d][%d-%d] traitée\n", x, x + width - 1, y,
-               y + height - 1);
-
-  monitoring_start_tile (who);
 
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++) {
       chgt |= compute_new_state (i, j);
     }
 
-  monitoring_end_tile (x, y, width, height, who);
   return chgt;
 }
 
 // Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
 unsigned sable_compute_seq (unsigned nb_iter)
 {
-
   for (unsigned it = 1; it <= nb_iter; it++) {
-    changement = 0;
     // On traite toute l'image en un coup (oui, c'est une grosse tuile)
-    changement |= do_tile (1, 1, DIM - 2, DIM - 2, 0);
+    changement = do_tile (1, 1, DIM - 2, DIM - 2, 0);
+
     if (changement == 0)
       return it;
   }

@@ -28,6 +28,7 @@ typedef struct
   unsigned dimensions;
   unsigned nb_cores;
   unsigned nb_gpu;
+  unsigned first_iteration;
   unsigned nb_iterations;
   char *label;
   char **task_ids;
@@ -46,6 +47,7 @@ void trace_data_init (trace_t *tr, unsigned num);
 void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores,
                                 unsigned nb_gpu);
 void trace_data_set_dim (trace_t *tr, unsigned dim);
+void trace_data_set_first_iteration (trace_t *tr, unsigned it);
 void trace_data_set_label (trace_t *tr, char *label);
 
 void trace_data_alloc_task_ids (trace_t *tr, unsigned count);

@@ -26,6 +26,15 @@ static unsigned compute_color (int i, int j)
   return cur_img (i, j);
 }
 
+int <template>_do_tile_default (int x, int y, int width, int height)
+{
+  for (int i = y; i < y + height; i++)
+    for (int j = x; j < x + width; j++)
+      cur_img (i, j) = compute_color (i, j);
+
+  return 0;
+}
+
 // The kernel returns 0, or the iteration step at which computation has
 // completed (e.g. stabilized).
 
@@ -39,9 +48,7 @@ unsigned <template>_compute_seq (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int i = 0; i < DIM; i++)
-      for (int j = 0; j < DIM; j++)
-        next_img (i, j) = compute_color (i, j);
+    do_tile (0, 0, DIM, DIM, 0);
 
     swap_images ();
   }
@@ -56,23 +63,6 @@ unsigned <template>_compute_seq (unsigned nb_iter)
 // or
 // ./run -k <template> -v tiled -ts 64 -m
 //
-static void do_tile (int x, int y, int width, int height, int who)
-{
-  // Calling monitoring_{start|end}_tile before/after actual computation allows
-  // to monitor the execution in real time (--monitoring) and/or to generate an
-  // execution trace (--trace).
-  // monitoring_start_tile only needs the cpu number
-  monitoring_start_tile (who);
-
-  for (int i = y; i < y + height; i++)
-    for (int j = x; j < x + width; j++)
-      next_img (i, j) = compute_color (i, j);
-
-  // In addition to the cpu number, monitoring_end_tile also needs the tile
-  // coordinates
-  monitoring_end_tile (x, y, width, height, who);
-}
-
 unsigned <template>_compute_tiled (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {

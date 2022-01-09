@@ -28,7 +28,7 @@ unsigned scrollup_compute_seq (unsigned nb_iter)
 }
 
 // Tile inner computation
-static void do_tile_reg (int x, int y, int width, int height)
+int scrollup_do_tile_default (int x, int y, int width, int height)
 {
   for (int i = y; i < y + height; i++) {
     int src = (i < DIM - 1) ? i + 1 : 0;
@@ -36,15 +36,8 @@ static void do_tile_reg (int x, int y, int width, int height)
     for (int j = x; j < x + width; j++)
       next_img (i, j) = cur_img (src, j);
   }
-}
 
-static void do_tile (int x, int y, int width, int height, int who)
-{
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  monitoring_end_tile (x, y, width, height, who);
+  return 0;
 }
 
 ///////////////////////////// Tiled sequential version (tiled)

@@ -3,8 +3,19 @@
 
 #include <omp.h>
 
+
 static unsigned compute_one_pixel (int i, int j);
 static void zoom (void);
+
+
+int mandel_do_tile_default (int x, int y, int width, int height)
+{
+  for (int i = y; i < y + height; i++)
+    for (int j = x; j < x + width; j++)
+      cur_img (i, j) = compute_one_pixel (i, j);
+
+  return 0;
+}
 
 ///////////////////////////// Simple sequential version (seq)
 // Suggested cmdline:
@@ -14,9 +25,7 @@ unsigned mandel_compute_seq (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int i = 0; i < DIM; i++)
-      for (int j = 0; j < DIM; j++)
-        cur_img (i, j) = compute_one_pixel (i, j);
+    do_tile (0, 0, DIM, DIM, 0);
 
     zoom ();
   }
@@ -24,22 +33,6 @@ unsigned mandel_compute_seq (unsigned nb_iter)
   return 0;
 }
 
-// Tile inner computation
-static void do_tile_reg (int x, int y, int width, int height)
-{
-  for (int i = y; i < y + height; i++)
-    for (int j = x; j < x + width; j++)
-      cur_img (i, j) = compute_one_pixel (i, j);
-}
-
-static inline void do_tile (int x, int y, int width, int height, int who)
-{
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  monitoring_end_tile (x, y, width, height, who);
-}
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline:

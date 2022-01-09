@@ -95,6 +95,29 @@ _easypap_draw_funcs()
     done
 }
 
+# result placed in tile_funcs
+_easypap_tile_funcs()
+{
+    local f tmp
+
+    tile_funcs=
+
+    if (( $# == 0 )); then
+        set none
+    fi
+
+    # Check if easypap is compiled
+    if [ ! -f obj/$1.o ]; then
+        return
+    fi
+
+    tmp=`nm obj/$1.o | awk '/ +_?'"$1"'_do_tile_[^.]*$/ {print $3}'`
+
+    for f in $tmp; do
+        tile_funcs="$tile_funcs ${f#*_do_tile_}"
+    done
+}
+
 # result placed in pos
 _easypap_option_position()
 {

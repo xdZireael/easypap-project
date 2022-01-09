@@ -1,15 +1,15 @@
 
 #include "graphics.h"
-#include "img_data.h"
 #include "constants.h"
-#include "time_macros.h"
 #include "debug.h"
 #include "error.h"
 #include "global.h"
 #include "gmonitor.h"
 #include "hooks.h"
+#include "img_data.h"
 #include "minmax.h"
 #include "ocl.h"
+#include "time_macros.h"
 
 #include <SDL_image.h>
 #include <SDL_opengl.h>
@@ -195,13 +195,15 @@ void graphics_init (void)
 
   if (do_display) {
     char title[1024];
-    int x = SDL_WINDOWPOS_CENTERED;
+    int x = 0; // SDL_WINDOWPOS_CENTERED;
     int y = 0;
 
     if (easypap_mpirun) {
-      sprintf (
-          title, "EasyPAP -- Process: [%d/%d]   Kernel: [%s]   Variant: [%s]",
-          easypap_mpi_rank (), easypap_mpi_size (), kernel_name, variant_name);
+      sprintf (title,
+               "EasyPAP -- Process: [%d/%d]   Kernel: [%s]   Variant: [%s]   "
+               "Tiling: [%s]",
+               easypap_mpi_rank (), easypap_mpi_size (), kernel_name,
+               variant_name, tile_name);
 
       if (easypap_mpi_size () > 1 && debug_enabled ('M')) {
         WIN_WIDTH = WIN_HEIGHT = 512;
@@ -209,8 +211,8 @@ void graphics_init (void)
         y = (easypap_mpi_rank () / 2) * (WIN_HEIGHT + 22) + 45;
       }
     } else
-      sprintf (title, "EasyPAP -- Kernel: [%s]   Variant: [%s]", kernel_name,
-               variant_name);
+      sprintf (title, "EasyPAP -- Kernel: [%s]   Variant: [%s]   Tiling: [%s]",
+               kernel_name, variant_name, tile_name);
 
     // Création de la fenêtre sur l'écran
     win =
@@ -260,7 +262,7 @@ void graphics_init (void)
 
       TTF_Quit ();
     }
-    
+
     // Option
     {
       time_t t     = time (NULL);
@@ -334,7 +336,7 @@ void graphics_alloc_images (void)
     SDL_FreeSurface (temporary_surface);
     temporary_surface = NULL;
 
-    //graphics_image_clean ();
+    // graphics_image_clean ();
   }
 }
 
@@ -421,13 +423,13 @@ void graphics_save_thumbnail (unsigned iteration)
 
   SDL_FillRect (mini_surface, NULL, 0);
 
-  //SDL_SetSurfaceAlphaMod (s, 170);
+  // SDL_SetSurfaceAlphaMod (s, 170);
 
   SDL_BlitScaled (s,                  /* src */
                   NULL, mini_surface, /* dest */
                   NULL);
 
-  //SDL_SetSurfaceAlphaMod (s, 255);
+  // SDL_SetSurfaceAlphaMod (s, 255);
 
   int r = IMG_SavePNG (mini_surface, filename);
 

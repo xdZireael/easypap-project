@@ -23,11 +23,26 @@ for ((i = 1; i <= $#; i++ )); do
                 TRACEDIR=${!n}
             fi
             ;;
+        -p|--params)
+            # use params file if available
+            use_params=yes
+            continue
+            ;;
         *)
             ;;
     esac
     ARGS+=("${!i}")
 done
+
+if [[ ${use_params} = yes ]]; then
+    if [[ -f ${TRACEDIR}/params.txt ]]; then
+        ARGS+=($(cat ${TRACEDIR}/params.txt))
+        exec $0 ${ARGS[@]}
+    else
+        echo "Warning: Params not found"
+    fi
+
+fi
 
 # source common vars
 . ${EASYPAPDIR}/script/easypap-common.bash
@@ -40,8 +55,7 @@ fi
 
 if [[ ${COMPARE} == "yes" ]]; then
     [[ -f ${TRACEFILE} && -f ${OLDTRACEFILE} ]] || error "Comparing trace files requires two files under ${TRACEDIR}"
-    #echo ${VIEW} ${ARGS[@]} ${TRACEFILE} ${OLDTRACEFILE}
-    exec ${VIEW} ${ARGS[@]} ${TRACEFILE} ${OLDTRACEFILE}
+    ARGS+=("${TRACEFILE}" "${OLDTRACEFILE}")
 fi
 
-exec ${VIEW} "$@"
+exec ${VIEW} ${ARGS[@]}

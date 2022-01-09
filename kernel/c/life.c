@@ -65,79 +65,51 @@ static inline void swap_tables (void)
   _alternate_table = tmp;
 }
 
-///////////////////////////// Sequential version (seq)
-
-static int compute_new_state (int y, int x)
-{
-  unsigned n      = 0;
-  unsigned me     = cur_table (y, x) != 0;
-  unsigned change = 0;
-
-  if (x > 0 && x < DIM - 1 && y > 0 && y < DIM - 1) {
-
-    for (int i = y - 1; i <= y + 1; i++)
-      for (int j = x - 1; j <= x + 1; j++)
-        n += cur_table (i, j);
-
-    n = (n == 3 + me) | (n == 3);
-    if (n != me)
-      change |= 1;
-
-    next_table (y, x) = n;
-  }
-
-  return change;
-}
-
-unsigned life_compute_seq (unsigned nb_iter)
-{
-  for (unsigned it = 1; it <= nb_iter; it++) {
-    int change = 0;
-
-    monitoring_start_tile (0);
-
-    for (int i = 0; i < DIM; i++)
-      for (int j = 0; j < DIM; j++)
-        change |= compute_new_state (i, j);
-
-    monitoring_end_tile (0, 0, DIM, DIM, 0);
-
-    swap_tables ();
-
-    if (!change)
-      return it;
-  }
-
-  return 0;
-}
-
-///////////////////////////// Tiled sequential version (tiled)
-
-// Tile inner computation
-static int do_tile_reg (int x, int y, int width, int height)
+///////////////////////////// Default tiling
+int life_do_tile_default (int x, int y, int width, int height)
 {
   int change = 0;
 
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++)
-      change |= compute_new_state (i, j);
+      if (j > 0 && j < DIM - 1 && i > 0 && i < DIM - 1) {
+
+        unsigned n  = 0;
+        unsigned me = cur_table (i, j);
+
+        for (int yloc = i - 1; yloc < i + 2; yloc++)
+          for (int xloc = j - 1; xloc < j + 2; xloc++)
+            n += cur_table (yloc, xloc);
+
+        n = (n == 3 + me) | (n == 3);
+        change |= (n != me);
+
+        next_table (i, j) = n;
+      }
 
   return change;
 }
 
-static int do_tile (int x, int y, int width, int height, int who)
+///////////////////////////// Sequential version (seq)
+//
+unsigned life_compute_seq (unsigned nb_iter)
 {
-  int r;
+  for (unsigned it = 1; it <= nb_iter; it++) {
 
-  monitoring_start_tile (who);
+    int change = do_tile (0, 0, DIM, DIM, 0);
 
-  r = do_tile_reg (x, y, width, height);
+    if (!change)
+      return it;
 
-  monitoring_end_tile (x, y, width, height, who);
+    swap_tables ();
+  }
 
-  return r;
+  return 0;
 }
 
+
+///////////////////////////// Tiled sequential version (tiled)
+//
 unsigned life_compute_tiled (unsigned nb_iter)
 {
   unsigned res = 0;
@@ -151,7 +123,7 @@ unsigned life_compute_tiled (unsigned nb_iter)
 
     swap_tables ();
 
-    if (!change) { // we stop when all cells are stable
+    if (!change) { // we stop if all cells are stable
       res = it;
       break;
     }

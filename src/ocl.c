@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "arch_flags.h"
 #include "constants.h"
 #include "cpustat.h"
 #include "debug.h"
@@ -321,13 +322,13 @@ static void ocl_list_variants (void)
 }
 
 #define CALIBRATION_BURST 4
-#define CALIBRATION_ITER  64
+#define CALIBRATION_ITER 64
 long _calibration_delta = 0;
 
 static void calibrate (void)
 {
   size_t global[1] = {4096 * 64}; // global domain size for our calculation
-  size_t local[1]  = {16};  // local domain size for our calculation
+  size_t local[1]  = {16};        // local domain size for our calculation
   cl_event events[CALIBRATION_BURST];
   long t;
   cl_int err;
@@ -382,7 +383,8 @@ void ocl_build_program (int list_variants)
       GPU_SIZE_X = DIM;
 
     if (GPU_SIZE_X > DIM)
-      exit_with_error ("GPU_SIZE_X (%d) cannot exceed DIM (%d)", GPU_SIZE_X, DIM);
+      exit_with_error ("GPU_SIZE_X (%d) cannot exceed DIM (%d)", GPU_SIZE_X,
+                       DIM);
   }
 
   if (!GPU_SIZE_Y)
@@ -405,11 +407,13 @@ void ocl_build_program (int list_variants)
   }
 
   if (GPU_SIZE_X % GPU_TILE_W)
-    fprintf (stderr, "Warning: GPU_SIZE_X (%d) is not a multiple of GPU_TILE_W (%d)!\n",
+    fprintf (stderr,
+             "Warning: GPU_SIZE_X (%d) is not a multiple of GPU_TILE_W (%d)!\n",
              GPU_SIZE_X, GPU_TILE_W);
 
   if (GPU_SIZE_Y % GPU_TILE_H)
-    fprintf (stderr, "Warning: GPU_SIZE_Y (%d) is not a multiple of GPU_TILE_H (%d)!\n",
+    fprintf (stderr,
+             "Warning: GPU_SIZE_Y (%d) is not a multiple of GPU_TILE_H (%d)!\n",
              GPU_SIZE_Y, GPU_TILE_H);
 
   // Load program source into memory
@@ -428,18 +432,27 @@ void ocl_build_program (int list_variants)
   if (debug_enabled ('o'))
     debug_str = "-DDEBUG=1";
 
+  char *endianness = "";
+  if (IS_LITTLE_ENDIAN)
+    endianness = "-DIS_LITTLE_ENDIAN";
+  else
+    endianness = "-DIS_BIG_ENDIAN";
+
   if (draw_param)
     sprintf (buffer,
              "-cl-mad-enable -cl-fast-relaxed-math"
-             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s"
-             " -DPARAM=%s %s",
-             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name, draw_param, debug_str);
+             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d "
+             "-DGPU_TILE_H=%d -DKERNEL_%s"
+             " -DPARAM=%s %s %s",
+             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name,
+             draw_param, debug_str, endianness);
   else
-    sprintf (
-        buffer,
-        "-cl-mad-enable -cl-fast-relaxed-math"
-        " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d -DGPU_TILE_H=%d -DKERNEL_%s %s",
-        DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name, debug_str);
+    sprintf (buffer,
+             "-cl-mad-enable -cl-fast-relaxed-math"
+             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d "
+             "-DGPU_TILE_H=%d -DKERNEL_%s %s %s",
+             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name,
+             debug_str, endianness);
 
   err = clBuildProgram (program, 0, NULL, buffer, NULL, NULL);
 
@@ -488,8 +501,8 @@ void ocl_build_program (int list_variants)
 
   calibrate ();
 
-  printf ("Using %dx%d workitems grouped in %dx%d tiles \n", GPU_SIZE_X, GPU_SIZE_Y,
-          GPU_TILE_W, GPU_TILE_H);
+  printf ("Using %dx%d workitems grouped in %dx%d tiles \n", GPU_SIZE_X,
+          GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H);
 }
 
 void ocl_send_data (void)
@@ -525,8 +538,10 @@ void ocl_retrieve_data (void)
 
 unsigned ocl_invoke_kernel_generic (unsigned nb_iter)
 {
-  size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y}; // global domain size for our calculation
-  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H}; // local domain size for our calculation
+  size_t global[2] = {GPU_SIZE_X,
+                      GPU_SIZE_Y}; // global domain size for our calculation
+  size_t local[2]  = {GPU_TILE_W,
+                     GPU_TILE_H}; // local domain size for our calculation
   cl_int err;
 
   monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
@@ -619,7 +634,11 @@ long ocl_monitor (cl_event evt, int x, int y, int width, int height,
 
   long now = what_time_is_it ();
   if (end > now)
-    PRINT_DEBUG ('o', "Warning: end of kernel (%s) ahead of current time by %ld µs\n", task_type == TASK_TYPE_COMPUTE ? "TASK_TYPE_COMPUTE" : "TASK_TYPE_TRANSFER", end - now);
+    PRINT_DEBUG (
+        'o', "Warning: end of kernel (%s) ahead of current time by %ld µs\n",
+        task_type == TASK_TYPE_COMPUTE ? "TASK_TYPE_COMPUTE"
+                                       : "TASK_TYPE_TRANSFER",
+        end - now);
 
   PRINT_DEBUG ('m', "[%s] start: %ld, end: %ld\n", "kernel", start, end);
 

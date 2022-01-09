@@ -107,10 +107,10 @@ void gmonitor_init (int x, int y)
     SDL_GetWindowPosition (win, &x, &y);
     SDL_GetWindowSize (win, &w, &h);
 
-    if (easypap_mpi_size () > 1)
+    // if (easypap_mpi_size () > 1)
       cpustat_init (x + w, y);
-    else
-      cpustat_init (x, y + h + 22);
+    // else
+      // cpustat_init (x, y + h + 22);
   }
 }
 
@@ -224,7 +224,7 @@ void gmonitor_toggle_heat_mode (void)
 #ifdef LOAD_INTENSITY
   if (do_gmonitor) {
     heat_mode ^= 1;
-    printf ("< Heatmap mode set to: %s >\n", heat_mode ? "ON" : "OFF");
+    printf ("< Heatmap mode %s >\n", heat_mode ? "ON" : "OFF");
   }
 #endif
 }

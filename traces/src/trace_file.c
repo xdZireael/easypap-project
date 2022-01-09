@@ -79,6 +79,10 @@ void trace_file_load (char *file)
       trace_data_set_dim (&trace[nb_traces], ev.param[0]);
       break;
 
+    case TRACE_FIRST_ITER:
+      trace_data_set_first_iteration (&trace[nb_traces], ev.param[0]);
+      break;
+
     case TRACE_LABEL:
       trace_data_set_label (&trace[nb_traces], (char *)ev.raw);
       break;

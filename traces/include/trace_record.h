@@ -6,9 +6,10 @@
 #ifdef ENABLE_TRACE
 
 extern unsigned do_trace;
+extern unsigned trace_may_be_used;
 
 void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
-                        char *label);
+                        char *label, unsigned starting_iteration);
 void trace_record_declare_task_ids (char *task_ids[]);
 void trace_record_commit_task_ids (void);
 void __trace_record_start_iteration (long time);

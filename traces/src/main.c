@@ -35,6 +35,7 @@ static void usage (char *progname, int val)
   fprintf (stderr, "\t-h\t| --help\t\t: display help\n");
   fprintf (stderr, "\t-i\t| --iteration <i>\t: display iteration i\n");
   fprintf (stderr, "\t-nt\t| --no-thumb\t\t: ignore thumbnails\n");
+  fprintf (stderr, "\t-p\t| --params\t\t: use options from params.txt file\n");
   fprintf (stderr,
            "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
   fprintf (stderr,
@@ -190,6 +191,9 @@ int main (int argc, char **argv)
           break;
         case SDLK_x:
           trace_graphics_toggle_vh_mode ();
+          break;
+        case SDLK_t:
+          trace_graphics_toggle_tracking_mode ();
           break;
         case SDLK_z:
           trace_graphics_zoom_to_selection ();

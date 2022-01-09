@@ -19,12 +19,13 @@
 #include "trace_data.h"
 #include "trace_record.h"
 
-unsigned do_trace = 0;
+unsigned do_trace          = 0;
+unsigned trace_may_be_used = 0;
 
 static unsigned task_ids_count = 0;
 
 void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
-                        char *label)
+                        char *label, unsigned starting_iteration)
 {
   fut_set_filename (file);
   enable_fut_flush ();
@@ -37,6 +38,7 @@ void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
   FUT_PROBE1 (0x1, TRACE_DIM, dim);
   if (label != NULL)
     FUT_PROBESTR (0x1, TRACE_LABEL, label);
+  FUT_PROBE1 (0x1, TRACE_FIRST_ITER, starting_iteration);
 }
 
 void trace_record_finalize (void)
@@ -50,7 +52,7 @@ void trace_record_finalize (void)
 
 void trace_record_declare_task_ids (char *task_ids[])
 {
-  if (!do_trace)
+  if (!trace_may_be_used)
     return;
 
   // FIXME
@@ -95,8 +97,12 @@ void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
                               int task_id)
 {
   if (task_id >= task_ids_count)
-    exit_with_error ("monitoring_end_tile: task id %d is too large (should < %d)%s\n",
-                     task_id, task_ids_count, (task_ids_count == 1) ? ". Probable cause: monitoring_declare_task_ids not called" : "");
+    exit_with_error (
+        "monitoring_end_tile: task id %d is too large (should < %d)%s\n",
+        task_id, task_ids_count,
+        (task_ids_count == 1)
+            ? ". Probable cause: monitoring_declare_task_ids not called"
+            : "");
   FUT_PROBE7 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h,
               TASK_COMBINE (task_type, task_id));
 }

@@ -30,6 +30,7 @@ unsigned soft_rendering = 0;
 static char *progname    = NULL;
 char *variant_name       = NULL;
 char *kernel_name        = NULL;
+char *tile_name          = NULL;
 char *draw_param         = NULL;
 char *easypap_image_file = NULL;
 
@@ -50,6 +51,7 @@ static unsigned do_dump __attribute__ ((unused))           = 0;
 static unsigned do_thumbs __attribute__ ((unused))         = 0;
 static unsigned show_ocl_config                            = 0;
 static unsigned list_ocl_variants                          = 0;
+static unsigned trace_starting_iteration                   = 1;
 
 static hwloc_topology_t topology;
 
@@ -115,19 +117,18 @@ void easypap_check_mpi (void)
 #endif
 }
 
-void easypap_check_vectorization (vec_type_t vec_type, direction_t dir)
+void easypap_vec_check (unsigned vec_width_in_bytes, direction_t dir)
 {
 #ifdef ENABLE_VECTO
   // Order of types must be consistent with that defined in vec_type enum (see
   // api_funcs.h)
-  int bytes[] = {VEC_SIZE_CHAR, VEC_SIZE_INT, VEC_SIZE_FLOAT, VEC_SIZE_DOUBLE};
-  int n       = (dir == DIR_HORIZONTAL ? TILE_W : TILE_H);
+  int n = (dir == DIR_HORIZONTAL ? TILE_W : TILE_H);
 
-  if (n < bytes[vec_type] || n % bytes[vec_type])
+  if (n < vec_width_in_bytes || n % vec_width_in_bytes)
     exit_with_error ("Tile %s (%d) is too small with respect to vectorization "
                      "requirements and should be a multiple of %d",
                      (dir == DIR_HORIZONTAL ? "width" : "height"), n,
-                     bytes[vec_type]);
+                     vec_width_in_bytes);
 
 #endif
 }
@@ -156,17 +157,17 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
                      strerror (errno));
 
   if (ftell (f) == 0) {
-    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "size",
-             "tilew", "tileh", "threads", "kernel", "variant", "iterations",
+    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "size",
+             "tilew", "tileh", "threads", "kernel", "variant", "tiling", "iterations",
              "schedule", "places", "label", "arg", "time");
   }
 
   if (uname (&s) < 0)
     exit_with_error ("uname failed (%s)", strerror (errno));
 
-  fprintf (f, "%s;%u;%u;%u;%u;%s;%s;%u;%s;%s;%s;%s;%ld\n", s.nodename, DIM,
+  fprintf (f, "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld\n", s.nodename, DIM,
            TILE_W, TILE_H, easypap_requested_number_of_threads (), kernel_name,
-           variant_name, nb_iter, easypap_omp_schedule (),
+           variant_name, tile_name, nb_iter, easypap_omp_schedule (),
            easypap_omp_places (), trace_label, (draw_param ?: "none"),
            time_in_us);
 
@@ -300,7 +301,7 @@ static void init_phases (void)
 
 #ifdef ENABLE_MONITORING
 #ifdef ENABLE_TRACE
-  if (do_trace) {
+  if (trace_may_be_used) {
     char filename[1024];
 
     if (easypap_mpirun)
@@ -313,7 +314,8 @@ static void init_phases (void)
     set_default_trace_label ();
 
     trace_record_init (filename, easypap_requested_number_of_threads (),
-                       easypap_number_of_gpus (), DIM, trace_label);
+                       easypap_number_of_gpus (), DIM, trace_label,
+                       trace_starting_iteration);
   }
 #endif
 #endif
@@ -324,6 +326,9 @@ static void init_phases (void)
   } else {
     PRINT_DEBUG ('i', "Init phase 1: [no config() hook defined]\n");
   }
+
+  if (the_tile_check != NULL)
+    the_tile_check ();
 
   if (opencl_used) {
     ocl_init (show_ocl_config, list_ocl_variants);
@@ -344,7 +349,7 @@ static void init_phases (void)
 
   // Make sure at leat one task id (0 = anonymous) is stored in the trace
 #ifdef ENABLE_TRACE
-  if (do_trace)
+  if (trace_may_be_used)
     trace_record_commit_task_ids ();
 #endif
 
@@ -386,8 +391,9 @@ static void init_phases (void)
 
 int main (int argc, char **argv)
 {
-  int stable     = 0;
-  int iterations = 0;
+  int stable       = 0;
+  int iterations   = 0;
+  unsigned iter_no = 1;
 
   filter_args (&argc, argv);
 
@@ -407,6 +413,8 @@ int main (int argc, char **argv)
   arch_flags_print ();
 
   init_phases ();
+
+  iter_no = trace_starting_iteration;
 
 #ifdef ENABLE_SDL
   // version graphique
@@ -527,18 +535,16 @@ int main (int argc, char **argv)
             if (!opencl_used && the_refresh_img)
               the_refresh_img ();
 
-            if (do_thumbs) {
-              static unsigned iter_no = 0;
-
+            if (do_thumbs && iterations >= trace_starting_iteration) {
               if (opencl_used) {
                 if (the_refresh_img)
                   the_refresh_img ();
                 else
                   ocl_retrieve_data ();
               }
-              
+
               if (easypap_proc_is_master ())
-                graphics_save_thumbnail (++iter_no);
+                graphics_save_thumbnail (iter_no++);
             }
           }
 
@@ -557,7 +563,7 @@ int main (int argc, char **argv)
     struct timeval t1, t2;
     int n;
 
-    if (do_trace | do_thumbs)
+    if (trace_may_be_used | do_thumbs)
       refresh_rate = 1;
 
     if (refresh_rate == -1) {
@@ -578,31 +584,32 @@ int main (int argc, char **argv)
         if (max_iter && iterations + refresh_rate > max_iter)
           refresh_rate = max_iter - iterations;
 
+        if (trace_may_be_used && (iterations + 1 == trace_starting_iteration))
+          do_trace = 1;
+
         monitoring_start_iteration ();
 
         n = the_compute (refresh_rate);
 
         monitoring_end_iteration ();
 
-#ifdef ENABLE_SDL
-        if (do_thumbs) {
-          static unsigned iter_no = 0;
+        if (n > 0) {
+          iterations += n;
+          stable = 1;
+        } else
+          iterations += refresh_rate;
 
+#ifdef ENABLE_SDL
+        if (do_thumbs && iterations >= trace_starting_iteration) {
           if (the_refresh_img)
             the_refresh_img ();
           else if (opencl_used)
             ocl_retrieve_data ();
 
           if (easypap_proc_is_master ())
-            graphics_save_thumbnail (++iter_no);
+            graphics_save_thumbnail (iter_no++);
         }
 #endif
-
-        if (n > 0) {
-          iterations += n;
-          stable = 1;
-        } else
-          iterations += refresh_rate;
       }
     }
 
@@ -640,7 +647,7 @@ int main (int argc, char **argv)
 
 #ifdef ENABLE_MONITORING
 #ifdef ENABLE_TRACE
-  if (do_trace)
+  if (trace_may_be_used)
     trace_record_finalize ();
 #endif
 #endif
@@ -691,7 +698,7 @@ static void usage (int val)
   fprintf (stderr, "\t-nt\t| --nb-tiles <N>\t: use N x N tiles\n");
   fprintf (stderr, "\t-nvs\t| --no-vsync\t\t: disable vertical sync\n");
   fprintf (stderr, "\t-o\t| --ocl\t\t\t: use OpenCL version\n");
-  fprintf (stderr, "\t-of\t| --output-file <nfike>\t: output performance "
+  fprintf (stderr, "\t-of\t| --output-file <file>\t: output performance "
                    "numbers in <file>\n");
   fprintf (stderr, "\t-p\t| --pause\t\t: pause between iterations (press space "
                    "to continue)\n");
@@ -707,12 +714,18 @@ static void usage (int val)
   fprintf (stderr,
            "\t-so\t| --show-ocl\t\t: display OpenCL platform and devices\n");
   fprintf (stderr, "\t-tn\t| --thumbnails\t\t: generate thumbnails\n");
+  fprintf (stderr, "\t-tni\t| --thumbnails-iter <n>\t: generate thumbnails "
+                   "starting from iteration n\n");
   fprintf (stderr, "\t-tw\t| --tile-width <W>\t: use tiles of width W\n");
   fprintf (stderr, "\t-th\t| --tile-height <H>\t: use tiles of height H\n");
   fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
   fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
+  fprintf (
+      stderr,
+      "\t-ti\t| --trace-iter <n>\t: enable trace starting from iteration n\n");
   fprintf (stderr,
            "\t-v\t| --variant <name>\t: select variant <name> of kernel\n");
+  fprintf (stderr, "\t-wt\t| --with-tile <name>\t\t: select do_tile_<name>\n");
 
   exit (val);
 }
@@ -728,6 +741,8 @@ static void filter_args (int *argc, char *argv[])
   while (*argc > 0) {
     if (!strcmp (*argv, "--no-vsync") || !strcmp (*argv, "-nvs")) {
       vsync = 0;
+    } else if (!strcmp (*argv, "--gdb") || !strcmp (*argv, "--lldb")) {
+      // ignore the flag
     } else if (!strcmp (*argv, "--no-display") || !strcmp (*argv, "-n")) {
       do_display = 0;
     } else if (!strcmp (*argv, "--pause") || !strcmp (*argv, "-p")) {
@@ -758,7 +773,7 @@ static void filter_args (int *argc, char *argv[])
       fprintf (stderr, "Warning: cannot monitor execution when ENABLE_SDL is "
                        "not defined\n");
 #else
-      do_gmonitor = 1;
+      do_gmonitor              = 1;
 #endif
     } else if (!strcmp (*argv, "--trace") || !strcmp (*argv, "-t")) {
 #ifndef ENABLE_TRACE
@@ -766,21 +781,51 @@ static void filter_args (int *argc, char *argv[])
           stderr,
           "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
 #else
-      do_trace    = 1;
+      trace_may_be_used        = 1;
+#endif
+    } else if (!strcmp (*argv, "--trace-iter") || !strcmp (*argv, "-ti")) {
+      if (*argc == 1) {
+        fprintf (stderr, "Error: starting iteration is missing\n");
+        usage (1);
+      }
+      (*argc)--;
+      argv++;
+#ifndef ENABLE_TRACE
+      fprintf (
+          stderr,
+          "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
+#else
+      trace_starting_iteration = atoi (*argv);
+      trace_may_be_used        = 1;
 #endif
     } else if (!strcmp (*argv, "--thumbnails") || !strcmp (*argv, "-tn")) {
 #ifndef ENABLE_SDL
       fprintf (stderr, "Warning: cannot generate thumbnails when ENABLE_SDL is "
                        "not defined\n");
 #else
-      do_thumbs   = 1;
+      do_thumbs                = 1;
+#endif
+    } else if (!strcmp (*argv, "--thumbnails-iter") ||
+               !strcmp (*argv, "-tni")) {
+      if (*argc == 1) {
+        fprintf (stderr, "Error: starting iteration is missing\n");
+        usage (1);
+      }
+      (*argc)--;
+      argv++;
+#ifndef ENABLE_SDL
+      fprintf (stderr, "Warning: cannot generate thumbnails when ENABLE_SDL is "
+                       "not defined\n");
+#else
+      trace_starting_iteration = atoi (*argv);
+      do_thumbs                = 1;
 #endif
     } else if (!strcmp (*argv, "--dump") || !strcmp (*argv, "-du")) {
 #ifndef ENABLE_SDL
       fprintf (stderr, "Warning: cannot dump image to disk when ENABLE_SDL is "
                        "not defined\n");
 #else
-      do_dump     = 1;
+      do_dump                  = 1;
 #endif
     } else if (!strcmp (*argv, "--arg") || !strcmp (*argv, "-a")) {
       if (*argc == 1) {
@@ -823,6 +868,14 @@ static void filter_args (int *argc, char *argv[])
       (*argc)--;
       argv++;
       kernel_name = *argv;
+    } else if (!strcmp (*argv, "--with-tile") || !strcmp (*argv, "-wt")) {
+      if (*argc == 1) {
+        fprintf (stderr, "Error: tile function suffix is missing\n");
+        usage (1);
+      }
+      (*argc)--;
+      argv++;
+      tile_name = *argv;
     } else if (!strcmp (*argv, "--load-image") || !strcmp (*argv, "-l")) {
 #ifndef ENABLE_SDL
       fprintf (stderr,
@@ -937,4 +990,12 @@ static void filter_args (int *argc, char *argv[])
     (*argc)--;
     argv++;
   }
+
+#ifdef ENABLE_TRACE
+  if (trace_may_be_used && do_display) {
+    fprintf (stderr,
+             "Warning: disabling display because tracing was requested\n");
+    do_display = 0;
+  }
+#endif
 }

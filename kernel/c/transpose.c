@@ -3,6 +3,16 @@
 
 #include <omp.h>
 
+// Tile inner computation
+int transpose_do_tile_default (int x, int y, int width, int height)
+{
+  for (int i = y; i < y + height; i++)
+    for (int j = x; j < x + width; j++)
+      next_img (i, j) = cur_img (j, i);
+
+  return 0;
+}
+
 ///////////////////////////// Simple sequential version (seq)
 // Suggested cmdline:
 // ./run --load-image images/shibuya.png --kernel transpose --pause
@@ -11,9 +21,7 @@ unsigned transpose_compute_seq (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    for (int i = 0; i < DIM; i++)
-      for (int j = 0; j < DIM; j++)
-        next_img (i, j) = cur_img (j, i);
+    do_tile (0, 0, DIM, DIM, 0);
 
     swap_images ();
   }
@@ -21,28 +29,10 @@ unsigned transpose_compute_seq (unsigned nb_iter)
   return 0;
 }
 
-// Tile inner computation
-static void do_tile_reg (int x, int y, int width, int height)
-{
-  for (int i = y; i < y + height; i++)
-    for (int j = x; j < x + width; j++)
-      next_img (i, j) = cur_img (j, i);
-}
-
-// Generic tile function
-static inline void do_tile (int x, int y, int width, int height, int who)
-{
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  monitoring_end_tile (x, y, width, height, who);
-}
-
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline:
-// ./run -l images/shibuya.png -k transpose -v tiled -ts 64
+// ./run -l images/shibuya.png -k transpose -v tiled -ts 16
 //
 unsigned transpose_compute_tiled (unsigned nb_iter)
 {

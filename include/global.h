@@ -30,6 +30,6 @@ extern char *draw_param;
 extern unsigned opencl_used;
 extern unsigned easypap_mpirun;
 
-extern char *kernel_name, *variant_name;
+extern char *kernel_name, *variant_name, *tile_name;
 
 #endif

@@ -37,14 +37,15 @@ void trace_data_init (trace_t *tr, unsigned num)
   fixed_gap          = 0;
   current_it         = NULL;
 
-  tr->num            = num;
-  tr->nb_cores       = 1;
-  tr->nb_gpu         = 0;
-  tr->per_cpu        = NULL;
-  tr->nb_iterations  = 0;
-  tr->label          = NULL;
-  tr->task_ids       = NULL;
-  tr->task_ids_count = 0;
+  tr->num             = num;
+  tr->nb_cores        = 1;
+  tr->nb_gpu          = 0;
+  tr->per_cpu         = NULL;
+  tr->nb_iterations   = 0;
+  tr->first_iteration = 1;
+  tr->label           = NULL;
+  tr->task_ids        = NULL;
+  tr->task_ids_count  = 0;
 }
 
 void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores, unsigned nb_gpu)
@@ -61,6 +62,11 @@ void trace_data_set_dim (trace_t *tr, unsigned dim)
   tr->dimensions = dim;
 }
 
+void trace_data_set_first_iteration (trace_t *tr, unsigned it)
+{
+  tr->first_iteration = it;
+}
+
 void trace_data_set_label (trace_t *tr, char *label)
 {
   tr->label = malloc (strlen (label) + 1);
@@ -71,7 +77,7 @@ static int next_id[MAX_TRACES] = {0, 0};
 
 void trace_data_alloc_task_ids (trace_t *tr, unsigned count)
 {
-  tr->task_ids = calloc (count, sizeof (char *));
+  tr->task_ids       = calloc (count, sizeof (char *));
   tr->task_ids_count = count;
 }
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+ARCH=`uname -s`
+
 EASYPAPDIR=${EASYPAPDIR:-.}
 
 # source common vars
@@ -7,10 +9,11 @@ EASYPAPDIR=${EASYPAPDIR:-.}
 
 TRACE=no
 THUMBS=no
+DEBUG=no
 
 for ((i = 1; i <= $#; i++ )); do
     case ${!i} in
-        -t|--trace)
+        -t|--trace|-ti|--trace-iter)
             TRACE=yes
             ;;
         -tn|--thumbs)
@@ -32,6 +35,9 @@ for ((i = 1; i <= $#; i++ )); do
             fi
             j=$((i + 1))
             MPIRUNARGS="${!j}"
+            ;;
+        --gdb|--lldb)
+            DEBUG=${!i#--}
             ;;
         *)
             ;;
@@ -57,10 +63,13 @@ fi
 
 # if no thread binding is specified, use OMP_PLACES=cores on Linux systems
 if [[ -z $OMP_PLACES ]]; then
-    ARCH=`uname -s`
     if [[ $ARCH == "Linux" ]]; then
         export OMP_PLACES="cores"
     fi
+fi
+
+if [[ $DEBUG != no ]]; then
+    exec ${DEBUG} ${SIMU} -- "$@"
 fi
 
 # check if program should be launched by mpirun

@@ -11,21 +11,26 @@ _easypap_completions()
 {
     local LONG_OPTIONS=("--help" "--load-image" "--size" "--kernel" "--variant" "--monitoring" "--thumbnails"
                         "--trace" "--no-display" "--iterations" "--nb-tiles" "--tile-size" "--arg" "--first-touch"
-                        "--label" "--mpirun" "--soft-rendering" "--show-ocl" "--tile-width" "--tile-height")
+                        "--label" "--mpirun" "--soft-rendering" "--show-ocl" "--tile-width" "--tile-height"
+                        "--trace-iter" "--thumbnails-iter" "--with-tile")
     local SHORT_OPTIONS=("-h" "-l" "-s" "-k" "-v" "-m" "-tn"
                          "-t" "-n" "-i" "-nt" "-ts" "-a" "-ft"
-                         "-lb" "-mpi" "-sr" "-so" "-tw" "-th")
+                         "-lb" "-mpi" "-sr" "-so" "-tw" "-th"
+                         "-ti" "-tni" "-wt")
     local NB_OPTIONS=${#LONG_OPTIONS[@]}
 
-    local exclude_s=(1) # size excludes load-image
     local exclude_l=(2) # load-image excludes size
-    local exclude_n=(5) # no-display excludes monitoring
-    local exclude_t=(5) # trace excludes monitoring
+    local exclude_s=(1) # size excludes load-image
     local exclude_m=(7 8) # monitoring excludes trace and no-display
-    local exclude_ts=(10 18 19) # tile-size excludes nb-tiles, tile-width and tile-height
+    local exclude_tn=(7 20 21) # thumbnails excludes trace, trace-iter and thumbnails-iter
+    local exclude_t=(5 6 20 21) # trace excludes monitoring, thumbnails, trace-iter and thumbnails-iter
+    local exclude_n=(5) # no-display excludes monitoring
     local exclude_nt=(11 18 19) # nb-tiles excludes tile-size, tile-width and tile-height
+    local exclude_ts=(10 18 19) # tile-size excludes nb-tiles, tile-width and tile-height
     local exclude_tw=(10 11) # tile-width excludes nb-tiles and tile-size
     local exclude_th=(10 11) # tile-height excludes nb-tiles and tile-size
+    local exclude_ti=(5 6 7 21) # trace-iter excludes monitoring, trace, thumbnails and thumbnails-iter
+    local exclude_tni=(6 7 20) # thumbnails-iter excludes thumbnails, trace and trace-iter
     local only_in_first_place_h=1 # --help should only be suggested as the very first argument position
     local only_in_first_place_so=1 # --show-ocl should only be suggested as the very first argument position
 
@@ -54,6 +59,9 @@ _easypap_completions()
                 ;;
             -th|--tile-height)
                 COMPREPLY=($(compgen -W "4 8 16 32 64" -- $cur))
+                ;;
+            -ti|--trace-iter|-tni|--thumbnails-iter)
+                COMPREPLY=($(compgen -W "1" -- $cur))
                 ;;
             -l|--load-image)
                 compopt -o filenames
@@ -88,6 +96,26 @@ _easypap_completions()
                     fi                
                 else
                     COMPREPLY=($(compgen -W "$draw_funcs" -- $cur))
+                fi
+                ;;
+            -wt|--with-tile)
+                local k=
+                # search for kernel name
+                for (( i=1; i < COMP_CWORD; i++ )); do
+                    case ${COMP_WORDS[i]} in
+                        -k|--kernel)
+                            if (( i < COMP_CWORD - 1)); then
+                                k=${COMP_WORDS[i+1]}
+                            fi
+                            ;;
+                        *)
+                            ;;
+                    esac
+                done
+                # kernel-specific tile functions (note: will use the 'none' kernel by default)
+                _easypap_tile_funcs $k
+                if [[ -n "$tile_funcs" ]]; then
+                    COMPREPLY=($(compgen -W "$tile_funcs" -- $cur))
                 fi
                 ;;
             -k|--kernel)

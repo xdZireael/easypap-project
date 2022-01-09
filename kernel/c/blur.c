@@ -7,7 +7,7 @@
 // Suggested cmdline(s):
 // ./run -l images/1024.png -k blur -v seq -si
 //
-static void do_tile_reg (int x, int y, int width, int height)
+int blur_do_tile_default (int x, int y, int width, int height)
 {
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++) {
@@ -35,13 +35,19 @@ static void do_tile_reg (int x, int y, int width, int height)
 
       next_img (i, j) = rgba (r, g, b, a);
     }
+    
+  return 0;
 }
 
+///////////////////////////// Sequential version (tiled)
+// Suggested cmdline(s):
+// ./run -l images/1024.png -k blur -v seq
+//
 unsigned blur_compute_seq (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {
 
-    do_tile_reg (0, 0, DIM, DIM);
+    do_tile (0, 0, DIM, DIM, 0);
 
     swap_images ();
   }
@@ -53,15 +59,6 @@ unsigned blur_compute_seq (unsigned nb_iter)
 // Suggested cmdline(s):
 // ./run -l images/1024.png -k blur -v tiled -ts 32 -m si
 //
-static inline void do_tile (int x, int y, int width, int height, int who)
-{
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  monitoring_end_tile (x, y, width, height, who);
-}
-
 unsigned blur_compute_tiled (unsigned nb_iter)
 {
   for (unsigned it = 1; it <= nb_iter; it++) {

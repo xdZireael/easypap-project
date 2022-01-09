@@ -23,6 +23,7 @@ void trace_graphics_reset_zoom (void);
 void trace_graphics_display_all (void);
 void trace_graphics_toggle_align_mode (void);
 void trace_graphics_toggle_vh_mode (void);
+void trace_graphics_toggle_tracking_mode (void);
 
 extern int use_thumbnails;
 extern unsigned char brightness;

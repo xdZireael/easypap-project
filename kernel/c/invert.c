@@ -10,6 +10,15 @@ static inline unsigned compute_color (int i, int j)
   return INV_MASK ^ cur_img (i, j);
 }
 
+int invert_do_tile_default (int x, int y, int width, int height)
+{
+  for (int i = y; i < y + height; i++)
+    for (int j = x; j < x + width; j++)
+      cur_img (i, j) = compute_color (i, j);
+
+  return 0;
+}
+
 ///////////////////////////// Simple sequential version (seq)
 // Suggested cmdline(s):
 // ./run -l images/shibuya.png -k invert -v seq -i 100 -n
@@ -26,22 +35,6 @@ unsigned invert_compute_seq (unsigned nb_iter)
   return 0;
 }
 
-// Tile inner computation
-static void do_tile_reg (int x, int y, int width, int height)
-{
-  for (int i = y; i < y + height; i++)
-    for (int j = x; j < x + width; j++)
-      cur_img (i, j) = compute_color (i, j);
-}
-
-static void do_tile (int x, int y, int width, int height, int who)
-{
-  monitoring_start_tile (who);
-
-  do_tile_reg (x, y, width, height);
-
-  monitoring_end_tile (x, y, width, height, who);
-}
 
 ///////////////////////////// Tiled sequential version (tiled)
 // Suggested cmdline(s):
