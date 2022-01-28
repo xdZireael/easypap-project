@@ -180,11 +180,11 @@ static void set_default_trace_label (void)
     char *str = getenv ("OMP_SCHEDULE");
 
     if (str != NULL)
-      snprintf (trace_label, MAX_LABEL, "%s_%s (%s) %d/%dx%d", kernel_name,
-                variant_name, str, DIM, TILE_W, TILE_H);
+      snprintf (trace_label, MAX_LABEL, "%s %s %s (%s) %d/%dx%d", kernel_name,
+                variant_name, strcmp(tile_name, "none") ? tile_name : "", str, DIM, TILE_W, TILE_H);
     else
-      snprintf (trace_label, MAX_LABEL, "%s_%s %d/%dx%d", kernel_name,
-                variant_name, DIM, TILE_W, TILE_H);
+      snprintf (trace_label, MAX_LABEL, "%s %s %s %d/%dx%d", kernel_name,
+                variant_name, strcmp(tile_name, "none") ? tile_name : "", DIM, TILE_W, TILE_H);
   }
 }
 
