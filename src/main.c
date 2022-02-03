@@ -584,8 +584,10 @@ int main (int argc, char **argv)
         if (max_iter && iterations + refresh_rate > max_iter)
           refresh_rate = max_iter - iterations;
 
+#ifdef ENABLE_TRACE
         if (trace_may_be_used && (iterations + 1 == trace_starting_iteration))
           do_trace = 1;
+#endif
 
         monitoring_start_iteration ();
 
