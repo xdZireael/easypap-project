@@ -28,8 +28,9 @@ static int out = 1;
 
 static inline void swap_tables()
 {
-  in = 1 - in;
-  out = 1 - out;
+  int tmp = in;
+  in = out;
+  out = tmp;
 }
 
 #define RGB(r, g, b) rgba(r, g, b, 0xFF)
@@ -111,6 +112,49 @@ void asandPile_draw_big(void)
   atable(i, i) = 100000;
 }
 
+static void one_spiral(int x, int y, int step, int turns)
+{
+  int i = x, j = y, t;
+
+  for (t = 1; t <= turns; t++)
+  {
+    for (; i < x + t * step; i++)
+      atable(i, j) = 3;
+    for (; j < y + t * step + 1; j++)
+      atable(i, j) = 3;
+    for (; i > x - t * step - 1; i--)
+      atable(i, j) = 3;
+    for (; j > y - t * step - 1; j--)
+      atable(i, j) = 3;
+  }
+  atable(i, j) = 4;
+
+  for (int i = -2; i < 3; i++)
+    for (int j = -2; j < 3; j++)
+      atable(i + x, j + y) = 3;
+}
+
+static void many_spirals(int xdebut, int xfin, int ydebut, int yfin, int step,
+                         int turns)
+{
+  int i, j;
+  int size = turns * step + 2;
+
+  for (i = xdebut + size; i < xfin - size; i += 2 * size)
+    for (j = ydebut + size; j < yfin - size; j += 2 * size)
+      one_spiral(i, j, step, turns);
+}
+
+static void spiral(unsigned twists)
+{
+  many_spirals(1, DIM - 2, 1, DIM - 2, 2, twists);
+}
+
+void asandPile_draw_spirals(void)
+{
+  spiral(DIM / 32);
+}
+
 // shared functions
 
 #define ALIAS(fun)       \
@@ -124,6 +168,7 @@ ALIAS(draw_4partout);
 ALIAS(draw_DIM);
 ALIAS(draw_alea);
 ALIAS(draw_big);
+ALIAS(draw_spirals);
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -145,15 +190,15 @@ int ssandPile_do_tile_default(int x, int y, int width, int height)
 {
   int diff = 0;
 
-  for (int j = y; j < y + height; j++)
-    for (int i = x; i < x + width; i++)
+  for (int i = y; i < y + height; i++)
+    for (int j = x; j < x + width; j++)
     {
-      table(out, j, i) = table(in, j, i) % 4;
-      table(out, j, i) += table(in, j + 1, i) / 4;
-      table(out, j, i) += table(in, j - 1, i) / 4;
-      table(out, j, i) += table(in, j, i + 1) / 4;
-      table(out, j, i) += table(in, j, i - 1) / 4;
-      if (table(out, j, i) >= 4)
+      table(out, i, j) = table(in, i, j) % 4;
+      table(out, i, j) += table(in, i + 1, j) / 4;
+      table(out, i, j) += table(in, i - 1, j) / 4;
+      table(out, i, j) += table(in, i, j + 1) / 4;
+      table(out, i, j) += table(in, i, j - 1) / 4;
+      if (table(out, i, j) >= 4)
         diff = 1;
     }
 
@@ -201,6 +246,7 @@ unsigned ssandPile_compute_tiled(unsigned nb_iter)
 
 void asandPile_init()
 {
+  in = out = 0;
   if (TABLE == NULL)
   {
     const unsigned size = DIM * DIM * sizeof(TYPE);
@@ -220,20 +266,7 @@ void asandPile_finalize()
 }
 
 ///////////////////////////// Version séquentielle simple (seq)
-
-static inline int asandPile_compute_new_state(int y, int x)
-{
-  if (atable(y, x) >= 4)
-  {
-    atable(y, x - 1) += atable(y, x) / 4;
-    atable(y, x + 1) += atable(y, x) / 4;
-    atable(y - 1, x) += atable(y, x) / 4;
-    atable(y + 1, x) += atable(y, x) / 4;
-    atable(y, x) %= 4;
-    return 1;
-  }
-  return 0;
-}
+// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
 
 int asandPile_do_tile_default(int x, int y, int width, int height)
 {
@@ -241,12 +274,18 @@ int asandPile_do_tile_default(int x, int y, int width, int height)
 
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++)
-      change |= asandPile_compute_new_state(i, j);
-
+      if (atable(i, j) >= 4)
+      {
+        atable(i, j - 1) += atable(i, j) / 4;
+        atable(i, j + 1) += atable(i, j) / 4;
+        atable(i - 1, j) += atable(i, j) / 4;
+        atable(i + 1, j) += atable(i, j) / 4;
+        atable(i, j) %= 4;
+        change = 1;
+      }
   return change;
 }
 
-// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
 unsigned asandPile_compute_seq(unsigned nb_iter)
 {
   int change = 0;
