@@ -244,6 +244,19 @@ unsigned ssandPile_compute_tiled(unsigned nb_iter)
   return 0;
 }
 
+// Only called when --dump or --thumbnails is used
+void ssandPile_refresh_img_ocl ()
+{
+  cl_int err;
+
+  err =
+      clEnqueueReadBuffer (queue, cur_buffer, CL_TRUE, 0,
+                           sizeof (unsigned) * DIM * DIM, TABLE, 0, NULL, NULL);
+  check (err, "Failed to read buffer from GPU");
+
+  ssandPile_refresh_img ();
+}
+
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////// Asynchronous Kernel
