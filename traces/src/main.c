@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #include "error.h"
 #include "trace_data.h"
@@ -115,6 +116,52 @@ static char **filter_args (int *argc, char *argv[])
   return argv;
 }
 
+static inline int get_event (SDL_Event *event, int blocking)
+{
+  return blocking ? SDL_WaitEvent (event) : SDL_PollEvent (event);
+}
+
+static unsigned skipped_events = 0;
+
+static int clever_get_event (SDL_Event *event)
+{
+  int r;
+  static bool prefetched = false;
+  static SDL_Event pr_event; // prefetched event
+
+  if (prefetched) {
+    *event = pr_event;
+    prefetched = false;
+    return 1;
+  }
+  
+  r = get_event (event, true);
+
+  if(r != 1)
+    return r;
+
+  // check if successive, similar events can be dropped
+  if (event->type == SDL_MOUSEMOTION) {
+
+    do {
+      int ret_code = get_event (&pr_event, false);
+      if (ret_code == 1) {
+        if (pr_event.type == SDL_MOUSEMOTION) {
+          *event = pr_event;
+          prefetched = false;
+          skipped_events++;
+        } else {
+          prefetched = true;
+        }
+      } else
+        return 1;
+    } while (prefetched == false);
+
+  }
+
+  return 1;
+}
+
 int main (int argc, char **argv)
 {
   argv = filter_args (&argc, argv);
@@ -159,7 +206,7 @@ int main (int argc, char **argv)
   SDL_bool quit = SDL_FALSE;
 
   do {
-    int r = SDL_WaitEvent (&event);
+    int r = clever_get_event (&event);
 
     if (r > 0) {
       if (event.type == SDL_KEYDOWN) {
@@ -201,6 +248,9 @@ int main (int argc, char **argv)
         case SDLK_z:
           trace_graphics_zoom_to_selection ();
           break;
+        case SDLK_s:
+          trace_graphics_save_screenshot ();
+          break;
         case SDLK_ESCAPE:
         case SDLK_q:
           quit = SDL_TRUE;
@@ -228,6 +278,8 @@ int main (int argc, char **argv)
       }
     }
   } while (!quit);
+
+  // printf ("Events skipped: %u\n", skipped_events);
 
   SDL_Quit ();
 

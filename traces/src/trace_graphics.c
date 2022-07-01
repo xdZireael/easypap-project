@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "error.h"
 #include "trace_common.h"
@@ -18,6 +19,8 @@
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
+
+#define MAX_FILENAME 1024
 
 // How much percentage of duration should we shift ?
 #define SHIFT_FACTOR 0.02
@@ -84,6 +87,7 @@ static SDL_Texture *quick_nav_tex   = NULL;
 static SDL_Texture *track_tex       = NULL;
 static SDL_Texture *footprint_tex   = NULL;
 static SDL_Texture *digit_tex[10]   = {NULL};
+static SDL_Texture *mouse_tex       = NULL;
 
 static SDL_Rect align_rect, quick_nav_rect, track_rect, footprint_rect;
 
@@ -412,7 +416,7 @@ static void preload_thumbnails (unsigned nb_iter)
     for (int d = 0; d < nb_dirs; d++)
       for (int iter = 0; iter < bound[d]; iter++) {
         SDL_Surface *thumb = NULL;
-        char filename[1024];
+        char filename[MAX_FILENAME];
 
         sprintf (filename, "%s/thumb_%04d.png", dir[d],
                  trace[d].first_iteration + iter);
@@ -696,6 +700,13 @@ static void create_misc_tex (void)
 
   SDL_FreeSurface (surf);
 
+  surf = IMG_Load ("./traces/img/mouse-cursor.png");
+  if (surf == NULL)
+    exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
+
+  mouse_tex = SDL_CreateTextureFromSurface (renderer, surf);
+  SDL_FreeSurface (surf);
+
   surf = IMG_Load ("./traces/img/frame.png");
   if (surf == NULL)
     exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
@@ -734,8 +745,7 @@ static void create_misc_tex (void)
 
   track_tex = SDL_CreateTextureFromSurface (renderer, surf);
   SDL_FreeSurface (surf);
-  SDL_SetTextureAlphaMod (track_tex,
-                          tracking_mode ? 0xFF : BUTTON_ALPHA);
+  SDL_SetTextureAlphaMod (track_tex, tracking_mode ? 0xFF : BUTTON_ALPHA);
 
   SDL_QueryTexture (track_tex, NULL, NULL, &track_rect.w, &track_rect.h);
 
@@ -745,10 +755,10 @@ static void create_misc_tex (void)
 
   footprint_tex = SDL_CreateTextureFromSurface (renderer, surf);
   SDL_FreeSurface (surf);
-  SDL_SetTextureAlphaMod (footprint_tex,
-                          footprint_mode ? 0xFF : BUTTON_ALPHA);
+  SDL_SetTextureAlphaMod (footprint_tex, footprint_mode ? 0xFF : BUTTON_ALPHA);
 
-  SDL_QueryTexture (footprint_tex, NULL, NULL, &footprint_rect.w, &footprint_rect.h);
+  SDL_QueryTexture (footprint_tex, NULL, NULL, &footprint_rect.w,
+                    &footprint_rect.h);
 }
 
 // Display functions
@@ -1078,7 +1088,7 @@ static void display_tile_background (int tr)
   if (use_thumbnails) {
     static int displayed_iter = -1;
     static SDL_Surface *thumb = NULL;
-    char filename[1024];
+    char filename[MAX_FILENAME];
 
     if (mouse.x != -1) {
       long time = pixel_to_time (mouse.x);
@@ -1252,7 +1262,8 @@ static void trace_graphics_display_trace (unsigned _t,
           // Check if mouse is within the bounds of the gantt zone
           if (mouse_in_gantt_zone) {
 
-            if (horiz_mode && (footprint_mode | point_in_yrange (&dst, virt_mouse.y))) {
+            if (horiz_mode &&
+                (footprint_mode | point_in_yrange (&dst, virt_mouse.y))) {
               if (to_be_emphasized[c] == NULL)
                 to_be_emphasized[c] =
                     first; // store a ref to the first task on this lane
@@ -1454,6 +1465,55 @@ static void trace_graphics_display (void)
   SDL_RenderPresent (renderer);
 }
 
+void trace_graphics_save_screenshot (void)
+{
+  SDL_Rect rect;
+  SDL_Surface *screen_surface = NULL;
+  char filename[MAX_FILENAME];
+
+  // Get viewport size
+  SDL_RenderGetViewport (renderer, &rect);
+
+  // Create SDL_Surface with depth of 32 bits
+  screen_surface = SDL_CreateRGBSurface (0, rect.w, rect.h, 32, 0, 0, 0, 0);
+
+  // Check if the surface is created properly
+  if (screen_surface == NULL)
+    exit_with_error ("Cannot create surface");
+
+  // Display fake mouse cursor before screenshot
+  rect.x = mouse.x - 3;
+  rect.y = mouse.y;
+  rect.w = 24;
+  rect.h = 36;
+
+  SDL_RenderCopy (renderer, mouse_tex, NULL, &rect);
+
+  // Get data from SDL_Renderer and save them into surface
+  if (SDL_RenderReadPixels (renderer, NULL, screen_surface->format->format,
+                            screen_surface->pixels, screen_surface->pitch) != 0)
+    exit_with_error ("Cannot read pixels from renderer");
+
+  // append date & time to filename
+  {
+    time_t timer;
+    struct tm *tm_info;
+    timer   = time (NULL);
+    tm_info = localtime (&timer);
+    strftime (filename, MAX_FILENAME, "screenshot-%Y_%m_%d-%H_%M_%S.png", tm_info);
+  }
+
+  // Save screenshot as PNG file
+  if (IMG_SavePNG (screen_surface, filename) != 0)
+    exit_with_error ("IMG_SavePNG (\"%s\") failed (%s)", filename,
+                     SDL_GetError ());
+
+  // Free memory
+  SDL_FreeSurface (screen_surface);
+
+  fprintf (stderr, "\"%s\" successfully captured\n", filename);
+}
+
 // Control of view
 
 void trace_graphics_toggle_vh_mode (void)
@@ -1479,12 +1539,12 @@ void trace_graphics_toggle_footprint_mode (void)
   SDL_SetTextureAlphaMod (footprint_tex, footprint_mode ? 0xFF : BUTTON_ALPHA);
 
   if (footprint_mode) {
-    old_horiz = horiz_mode;
-    old_track = tracking_mode;
-    horiz_mode = 1;
+    old_horiz     = horiz_mode;
+    old_track     = tracking_mode;
+    horiz_mode    = 1;
     tracking_mode = 0;
   } else {
-    horiz_mode = old_horiz;
+    horiz_mode    = old_horiz;
     tracking_mode = old_track;
   }
   SDL_SetTextureAlphaMod (track_tex, tracking_mode ? 0xFF : BUTTON_ALPHA);
@@ -1927,8 +1987,8 @@ void trace_graphics_init (unsigned w, unsigned h)
       max (trace[0].nb_iterations, trace[nb_traces - 1].nb_iterations);
   max_cores = max (trace[0].nb_cores, trace[nb_traces - 1].nb_cores);
   max_time  = max (iteration_end_time (trace, trace[0].nb_iterations - 1),
-                  iteration_end_time (trace + nb_traces - 1,
-                                      trace[nb_traces - 1].nb_iterations - 1));
+                   iteration_end_time (trace + nb_traces - 1,
+                                       trace[nb_traces - 1].nb_iterations - 1));
 
   const unsigned min_width  = layout_get_min_width ();
   const unsigned min_height = layout_get_min_height ();
