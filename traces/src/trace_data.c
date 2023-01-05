@@ -46,6 +46,7 @@ void trace_data_init (trace_t *tr, unsigned num)
   tr->label           = NULL;
   tr->task_ids        = NULL;
   tr->task_ids_count  = 0;
+  tr->has_cache_data  = 0;
 }
 
 void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores, unsigned nb_gpu)
@@ -60,6 +61,11 @@ void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores, unsigned nb_gpu)
 void trace_data_set_dim (trace_t *tr, unsigned dim)
 {
   tr->dimensions = dim;
+}
+
+void trace_data_set_do_cache (trace_t *tr, unsigned use_cache)
+{
+  tr->has_cache_data = use_cache;
 }
 
 void trace_data_set_first_iteration (trace_t *tr, unsigned it)
@@ -91,7 +97,7 @@ void trace_data_add_taskid (trace_t *tr, char *id)
 void trace_data_add_task (trace_t *tr, long start_time, long end_time,
                           unsigned x, unsigned y, unsigned w, unsigned h,
                           unsigned iteration, unsigned cpu,
-                          task_type_t task_type, int task_id)
+                          task_type_t task_type, int task_id, int64_t *counters)
 {
   trace_task_t *t = malloc (sizeof (trace_task_t));
 
@@ -104,6 +110,20 @@ void trace_data_add_task (trace_t *tr, long start_time, long end_time,
   t->iteration  = iteration;
   t->task_type  = task_type;
   t->task_id    = task_id;
+  if (tr->has_cache_data) {
+    if (counters == NULL) {
+      for (int c = 0; c < EASYPAP_NB_COUNTERS; c++)
+        t->counters[c] = 0;
+    } else {
+      for (int c = 0; c < EASYPAP_NB_COUNTERS; c++) {
+        t->counters[c] = counters[c];
+#ifdef ENABLE_PER_ITERATION_STATS
+        current_it->perfcounter_cpu_scores[cpu][c] += counters[c];
+        current_it->perfcounter_scores[c] += counters[c];
+#endif
+      }
+    }
+  }
 
   list_add_tail (&t->cpu_chain, tr->per_cpu + cpu);
 
@@ -154,13 +174,21 @@ void trace_data_start_iteration (trace_t *tr, long start_time)
   current_it->correction     = 0;
   current_it->gap            = 0;
   current_it->start_time     = shift (start_time);
-  current_it->first_cpu_task = malloc (tr->nb_cores * sizeof (trace_task_t *));
-  for (int c = 0; c < tr->nb_cores; c++)
-    current_it->first_cpu_task[c] = NULL;
+  current_it->first_cpu_task = calloc (tr->nb_cores, sizeof (trace_task_t *));
+
+#ifdef ENABLE_PER_ITERATION_STATS
+  if (tr->has_cache_data) {
+    current_it->perfcounter_cpu_scores =
+        calloc (tr->nb_cores, sizeof (perfcounter_array_t));
+    for (int i = 0; i < EASYPAP_NB_COUNTERS; i++) {
+      current_it->perfcounter_scores[i] = 0;
+    }
+  } else {
+    current_it->perfcounter_cpu_scores = NULL;
+  }
+#endif
 
   list_add_tail (&current_it->chain, &tmp_list);
-
-  // printf ("%lu\n", current_it->start_time);
 }
 
 void trace_data_end_iteration (trace_t *tr, long end_time)

@@ -25,7 +25,7 @@ LDLIBS		+= -lm
 
 PACKAGES	:= SDL2_image SDL2_ttf
 
-ifdef ENABLE_FUT
+ifeq ($(ENABLE_FUT), 1)
 CFLAGS		+= -DENABLE_FUT
 PACKAGES	+= fxt
 endif

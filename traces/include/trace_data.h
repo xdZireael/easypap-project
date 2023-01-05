@@ -1,8 +1,13 @@
 #ifndef TRACE_DATA_IS_DEF
 #define TRACE_DATA_IS_DEF
 
+#include <stdint.h>
+
 #include "list.h"
 #include "trace_common.h"
+#include "perfcounter.h"
+
+typedef int64_t perfcounter_array_t[EASYPAP_NB_COUNTERS];
 
 typedef struct
 {
@@ -11,12 +16,17 @@ typedef struct
   int task_type;
   int task_id;
   unsigned iteration;
+  perfcounter_array_t counters;
   struct list_head cpu_chain;
 } trace_task_t;
 
 typedef struct
 {
   long start_time, end_time;
+#ifdef ENABLE_PER_ITERATION_STATS
+  perfcounter_array_t *perfcounter_cpu_scores; // counter for each cpu
+  perfcounter_array_t perfcounter_scores;      // counter for iteration
+#endif
   long correction, gap;
   struct list_head chain;
   trace_task_t **first_cpu_task;
@@ -30,6 +40,7 @@ typedef struct
   unsigned nb_gpu;
   unsigned first_iteration;
   unsigned nb_iterations;
+  unsigned has_cache_data;
   char *label;
   char **task_ids;
   unsigned task_ids_count;
@@ -47,6 +58,7 @@ void trace_data_init (trace_t *tr, unsigned num);
 void trace_data_set_nb_threads (trace_t *tr, unsigned nb_cores,
                                 unsigned nb_gpu);
 void trace_data_set_dim (trace_t *tr, unsigned dim);
+void trace_data_set_do_cache (trace_t *tr, unsigned use_cache);
 void trace_data_set_first_iteration (trace_t *tr, unsigned it);
 void trace_data_set_label (trace_t *tr, char *label);
 
@@ -56,7 +68,8 @@ void trace_data_add_taskid (trace_t *tr, char *id);
 void trace_data_add_task (trace_t *tr, long start_time, long end_time,
                           unsigned x, unsigned y, unsigned w, unsigned h,
                           unsigned iteration, unsigned cpu,
-                          task_type_t task_type, int task_id);
+                          task_type_t task_type, int task_id,
+                          int64_t *counters);
 
 void trace_data_start_iteration (trace_t *tr, long start_time);
 void trace_data_end_iteration (trace_t *tr, long end_time);

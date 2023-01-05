@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "error.h"
 #include "trace_common.h"
@@ -69,10 +70,19 @@ void trace_file_load (char *file)
       break;
 
     case TRACE_END_TILE:
-      trace_data_add_task (
-          &trace[nb_traces], last_start_times[cpu], ev.param[0], ev.param[2],
-          ev.param[3], ev.param[4], ev.param[5], current_iteration, cpu,
-          TASK_EXTRACT_TTYPE (ev.param[6]), TASK_EXTRACT_TID (ev.param[6]));
+      if (trace[nb_traces].has_cache_data) {
+        assert (ev.nb_params > 7);
+        trace_data_add_task (&trace[nb_traces], last_start_times[cpu],
+                             ev.param[0], ev.param[2], ev.param[3], ev.param[4],
+                             ev.param[5], current_iteration, cpu,
+                             TASK_EXTRACT_TTYPE (ev.param[6]),
+                             TASK_EXTRACT_TID (ev.param[6]), (int64_t *)ev.param + 7);
+      } else
+        trace_data_add_task (&trace[nb_traces], last_start_times[cpu],
+                             ev.param[0], ev.param[2], ev.param[3], ev.param[4],
+                             ev.param[5], current_iteration, cpu,
+                             TASK_EXTRACT_TTYPE (ev.param[6]),
+                             TASK_EXTRACT_TID (ev.param[6]), NULL);
       break;
 
     case TRACE_DIM:
@@ -94,7 +104,9 @@ void trace_file_load (char *file)
     case TRACE_TASKID:
       trace_data_add_taskid (&trace[nb_traces], (char *)ev.raw);
       break;
-
+    case TRACE_DO_CACHE:
+      trace_data_set_do_cache (&trace[nb_traces], (unsigned)ev.param[0]);
+      break;
     default:
       break;
     }
@@ -122,9 +134,9 @@ void trace_file_load (char *file)
   trace_data_no_more_data (&trace[nb_traces]);
 
   printf (
-      "Trace #%d \"%s\" successfully opened: %d iterations on %d CPUs (%s)\n",
+      "Trace #%d \"%s\" successfully opened: %d iterations on %d CPUs, %s (%s)\n",
       nb_traces, trace[nb_traces].label, trace[nb_traces].nb_iterations,
-      trace[nb_traces].nb_cores, file);
+      trace[nb_traces].nb_cores, trace[nb_traces].has_cache_data ? "cache usage found" : "no cache data", file);
 
   nb_traces++;
 }

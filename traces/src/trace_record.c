@@ -22,10 +22,13 @@
 unsigned do_trace          = 0;
 unsigned trace_may_be_used = 0;
 
+static unsigned cache_activated = 0;
+
 static unsigned task_ids_count = 0;
 
 void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
-                        char *label, unsigned starting_iteration)
+                        char *label, unsigned starting_iteration,
+                        unsigned is_cache_enabled)
 {
   fut_set_filename (file);
   enable_fut_flush ();
@@ -39,6 +42,9 @@ void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
   if (label != NULL)
     FUT_PROBESTR (0x1, TRACE_LABEL, label);
   FUT_PROBE1 (0x1, TRACE_FIRST_ITER, starting_iteration);
+  FUT_PROBE1 (0x1, TRACE_DO_CACHE, is_cache_enabled);
+
+  cache_activated = is_cache_enabled;
 }
 
 void trace_record_finalize (void)
@@ -94,7 +100,7 @@ void __trace_record_start_tile (long time, unsigned cpu)
 
 void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
                               unsigned w, unsigned h, int task_type,
-                              int task_id)
+                              int task_id, int64_t *counters)
 {
   if (task_id >= task_ids_count)
     exit_with_error (
@@ -103,6 +109,12 @@ void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
         (task_ids_count == 1)
             ? ". Probable cause: monitoring_declare_task_ids not called"
             : "");
-  FUT_PROBE7 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h,
-              TASK_COMBINE (task_type, task_id));
+  if (cache_activated)
+    FUT_PROBE11 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h,
+                 TASK_COMBINE (task_type, task_id), counters[0],
+                 counters[1], counters[2],
+                 counters[3]);
+  else
+    FUT_PROBE7 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h,
+                TASK_COMBINE (task_type, task_id));
 }

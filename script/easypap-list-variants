@@ -2,12 +2,12 @@
 
 EASYPAPDIR=${EASYPAPDIR:-.}
 
+. ${EASYPAPDIR}/script/easypap-utilities.bash
+
 if [ $# != 1 ]; then
     echo "Usage: easypap-list-variants <kernel>"
     exit 1
 fi
-
-. ${EASYPAPDIR}/script/easypap-utilities.bash
 
 _easypap_variants "$1"
 

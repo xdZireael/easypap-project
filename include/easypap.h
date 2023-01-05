@@ -11,6 +11,7 @@
 #include "error.h"
 #include "monitoring.h"
 #include "ocl.h"
+#include "ez_pthread.h"
 #include "pthread_barrier.h"
 #include "scheduler.h"
 #include "minmax.h"

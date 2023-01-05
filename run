@@ -65,6 +65,11 @@ fi
 if [[ -z $OMP_PLACES ]]; then
     if [[ $ARCH == "Linux" ]]; then
         export OMP_PLACES="cores"
+    else # MacOS
+        # OMP_PLACES is not supported by libgomp yet
+        if ! ldd ${SIMU} | grep libgomp > /dev/null; then
+            export OMP_PLACES="cores"
+        fi
     fi
 fi
 
@@ -74,7 +79,14 @@ fi
 
 # check if program should be launched by mpirun
 if [[ -n $MPIRUNARGS ]]; then
-    mpirun -x OMP_NUM_THREADS -x OMP_SCHEDULE ${MPIRUNARGS} ${SIMU} "$@"
+    MPIENV=""
+    if [[ -n $OMP_NUM_THREADS ]]; then
+        MPIENV="${MPIENV} -x OMP_NUM_THREADS"
+    fi
+    if [[ -n $OMP_SCHEDULE ]]; then
+        MPIENV="${MPIENV} -x OMP_SCHEDULE"
+    fi
+    mpirun ${MPIENV} ${MPIRUNARGS} ${SIMU} "$@"
 else
     exec ${SIMU} "$@"
 fi

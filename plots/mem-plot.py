@@ -4,7 +4,13 @@ import sys
 
 assert sys.version_info >= (3,8)
 
-args = parseArguments(sys.argv)
+
+computed_attr = {}
+
+computed_attr["memory_cost"] = lambda df : 0 * df["l1hits"] + 5 * df["l2hits"] + 20 * df["l3hits"] + 30 *  df["dramhits"]
+
+args = parseArguments(sys.argv, computed_attr)
+
 df = getDataFrame(args)
 
 # see customizing-with-matplotlibrc-files

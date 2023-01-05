@@ -12,22 +12,29 @@ ENABLE_MONITORING	= 1
 ENABLE_VECTO		= 1
 ENABLE_TRACE		= 1
 ENABLE_MPI			= 1
+#ENABLE_PAPI			= 1
 
 ####################################
 
-ARCH		:= $(shell uname -s | tr a-z A-Z)
+OS_NAME			:= $(shell uname -s | tr a-z A-Z)
+ARCH			:= $(shell uname -m | tr a-z A-Z)
+CPU_MICROARCH	:= $(shell echo $(shell (gcc -march=native -Q --help=target) | grep march) | cut -d ' ' -f2)
 
-ifdef ENABLE_SDL
+ifeq ($(ENABLE_SDL),1)
 SOURCES		:= $(wildcard src/*.c)
 else
 SOURCES		:= $(filter-out src/gmonitor.c src/graphics.c src/cpustat.c, $(wildcard src/*.c))
+endif
+
+ifneq ($(ENABLE_PAPI), 1)
+SOURCES		:= $(filter-out src/perfcounter.c, $(SOURCES))
 endif
 
 KERNELS		:= $(wildcard kernel/c/*.c)
 
 T_SOURCE	:= traces/src/trace_common.c
 
-ifdef ENABLE_TRACE
+ifeq ($(ENABLE_TRACE), 1)
 T_SOURCE	+= traces/src/trace_record.c
 endif
 
@@ -53,11 +60,11 @@ MAKEFILES	:= Makefile
 CC			:= gcc
 #CC			:= clang
 
-CFLAGS 		+= -O3 -march=native -Wall -Wno-unused-function
+CFLAGS 		+= -O3 -march=native -Wall -Wno-unused-function -DARCH=$(ARCH)
 CFLAGS		+= -I./include -I./traces/include
 LDLIBS		+= -lm
 
-ifeq ($(ARCH),DARWIN)
+ifeq ($(OS_NAME), DARWIN)
 LDLIBS		+= -framework OpenGL
 else
 CFLAGS		+= -pthread -rdynamic
@@ -66,13 +73,23 @@ LDLIBS		+= -lGL -ldl
 endif
 
 # Vectorization
-ifdef ENABLE_VECTO
+ifeq ($(ENABLE_VECTO), 1)
 CFLAGS		+= -DENABLE_VECTO
 endif
 
 # Monitoring
-ifdef ENABLE_MONITORING
+ifeq ($(ENABLE_MONITORING), 1)
 CFLAGS		+= -DENABLE_MONITORING
+endif
+
+ifeq ($(ENABLE_PAPI), 1)
+ifeq ($(CPU_MICROARCH), $(filter $(CPU_MICROARCH),skylake-avx512 cascadelake))
+CFLAGS 		+= -DMICROARCH_SKYLAKE
+else
+ifeq ($(CPU_MICROARCH), haswell)
+CFLAGS 		+= -DMICROARCH_HASWELL
+endif
+endif
 endif
 
 # OpenMP
@@ -81,7 +98,7 @@ LDFLAGS		+= -fopenmp
 
 # OpenCL
 CFLAGS		+= -DCL_SILENCE_DEPRECATION
-ifeq ($(ARCH),DARWIN)
+ifeq ($(OS_NAME), DARWIN)
 LDLIBS		+= -framework OpenCL
 else
 LDLIBS		+= -lOpenCL
@@ -90,23 +107,28 @@ endif
 # Hardware Locality
 PACKAGES	:= hwloc
 
-ifdef ENABLE_SDL
+ifeq ($(ENABLE_SDL), 1)
 CFLAGS		+= -DENABLE_SDL
 PACKAGES	+= SDL2_image SDL2_ttf
 endif
 
-ifdef ENABLE_TRACE
+ifeq ($(ENABLE_TRACE), 1)
 # Right now, only fxt is supported
 CFLAGS		+= -DENABLE_TRACE -DENABLE_FUT
 PACKAGES	+= fxt
 endif
 
 # MPI
-ifdef ENABLE_MPI
+ifeq ($(ENABLE_MPI), 1)
 CFLAGS		+= -DENABLE_MPI
 PACKAGES	+= ompi
 endif
 
+# PAPI
+ifeq ($(ENABLE_PAPI), 1)
+CFLAGS		+= -DENABLE_PAPI
+PACKAGES	+= papi
+endif
 
 # Query CFLAGS and LDLIBS for all packages
 CFLAGS		+= $(shell pkg-config --cflags $(PACKAGES))

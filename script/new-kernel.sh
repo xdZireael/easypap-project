@@ -22,6 +22,10 @@ shall_we_continue()
     exit 1
 }
 
+EASYPAPDIR=${EASYPAPDIR:-.}
+
+. ${EASYPAPDIR}/script/easypap-common.bash
+
 PROGNAME=$0
 
 while [[ $# -ge 1 ]]; do

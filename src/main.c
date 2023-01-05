@@ -19,6 +19,7 @@
 #include "graphics.h"
 #include "hooks.h"
 #include "ocl.h"
+#include "perfcounter.h"
 #include "trace_record.h"
 
 int max_iter            = 0;
@@ -147,7 +148,9 @@ static void update_refresh_rate (int p)
   printf ("< Refresh rate set to: %d >\n", refresh_rate);
 }
 
-static void output_perf_numbers (long time_in_us, unsigned nb_iter)
+static void output_perf_numbers (long time_in_us, unsigned nb_iter,
+                                 int64_t l1hits, int64_t l2hits, int64_t l3hits,
+                                 int64_t dramhits)
 {
   FILE *f = fopen (output_file, "a");
   struct utsname s;
@@ -157,19 +160,21 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter)
                      strerror (errno));
 
   if (ftell (f) == 0) {
-    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine", "size",
-             "tilew", "tileh", "threads", "kernel", "variant", "tiling", "iterations",
-             "schedule", "places", "label", "arg", "time");
+    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n",
+             "machine", "size", "tilew", "tileh", "threads", "kernel",
+             "variant", "tiling", "iterations", "schedule", "places", "label",
+             "arg", "time", "l1hits", "l2hits", "l3hits", "dramhits");
   }
 
   if (uname (&s) < 0)
     exit_with_error ("uname failed (%s)", strerror (errno));
 
-  fprintf (f, "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld\n", s.nodename, DIM,
-           TILE_W, TILE_H, easypap_requested_number_of_threads (), kernel_name,
-           variant_name, tile_name, nb_iter, easypap_omp_schedule (),
-           easypap_omp_places (), trace_label, (draw_param ?: "none"),
-           time_in_us);
+  fprintf (f, "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld;%" PRId64 ";%" PRId64 ";%" PRId64 ";%" PRId64 "\n",
+           s.nodename, DIM, TILE_W, TILE_H,
+           easypap_requested_number_of_threads (), kernel_name, variant_name,
+           tile_name, nb_iter, easypap_omp_schedule (), easypap_omp_places (),
+           trace_label, (draw_param ?: "none"), time_in_us, l1hits, l2hits,
+           l3hits, dramhits);
 
   fclose (f);
 }
@@ -181,10 +186,12 @@ static void set_default_trace_label (void)
 
     if (str != NULL)
       snprintf (trace_label, MAX_LABEL, "%s %s %s (%s) %d/%dx%d", kernel_name,
-                variant_name, strcmp(tile_name, "none") ? tile_name : "", str, DIM, TILE_W, TILE_H);
+                variant_name, strcmp (tile_name, "none") ? tile_name : "", str,
+                DIM, TILE_W, TILE_H);
     else
       snprintf (trace_label, MAX_LABEL, "%s %s %s %d/%dx%d", kernel_name,
-                variant_name, strcmp(tile_name, "none") ? tile_name : "", DIM, TILE_W, TILE_H);
+                variant_name, strcmp (tile_name, "none") ? tile_name : "", DIM,
+                TILE_W, TILE_H);
   }
 }
 
@@ -268,6 +275,16 @@ static void init_phases (void)
   nb_cores = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_PU);
   PRINT_DEBUG ('t', "%d-core machine detected\n", nb_cores);
 
+#ifdef ENABLE_MONITORING
+#ifdef ENABLE_PAPI
+  if (do_cache)
+    easypap_perfcounter_init (easypap_requested_number_of_threads (),
+                              EASYPAP_MONITOR_ALL);
+#endif
+#endif
+
+  ez_pthread_init (topology, nb_cores);
+
   // Set kernel and variant
   {
     if (kernel_name == NULL)
@@ -315,7 +332,7 @@ static void init_phases (void)
 
     trace_record_init (filename, easypap_requested_number_of_threads (),
                        easypap_number_of_gpus (), DIM, trace_label,
-                       trace_starting_iteration);
+                       trace_starting_iteration, do_cache);
   }
 #endif
 #endif
@@ -570,7 +587,7 @@ int main (int argc, char **argv)
       if (max_iter)
         refresh_rate = max_iter;
       else
-        refresh_rate = 1;
+        refresh_rate = INT_MAX;
     }
 
     gettimeofday (&t1, NULL);
@@ -621,9 +638,24 @@ int main (int argc, char **argv)
 
     temps = TIME_DIFF (t1, t2);
 
-    if (easypap_proc_is_master ())
-      output_perf_numbers (temps, iterations);
-
+    if (easypap_proc_is_master ()) {
+#ifdef ENABLE_PAPI
+      if (do_cache) {
+        int64_t perfcounters[EASYPAP_NB_COUNTERS];
+        if (easypap_perfcounter_get_total_counters (perfcounters) == 0)
+          output_perf_numbers (
+              temps, iterations,
+              perfcounters[EASYPAP_ALL_LOADS] - perfcounters[EASYPAP_L2_HIT] -
+                  perfcounters[EASYPAP_L3_HIT] - perfcounters[EASYPAP_L3_MISS],
+              perfcounters[EASYPAP_L2_HIT], perfcounters[EASYPAP_L3_HIT],
+              perfcounters[EASYPAP_L3_MISS]);
+      } else {
+        output_perf_numbers (temps, iterations, -1, -1, -1, -1);
+      }
+#else
+      output_perf_numbers (temps, iterations, -1, -1, -1, -1);
+#endif
+    }
     PRINT_MASTER ("%ld.%03ld \n", temps / 1000, temps % 1000);
   }
 
@@ -639,8 +671,8 @@ int main (int argc, char **argv)
     if (easypap_proc_is_master ()) {
       char filename[1024];
 
-      sprintf (filename, "dump-%s-%s-dim-%d-iter-%d.png", kernel_name,
-               variant_name, DIM, iterations);
+      sprintf (filename, "dump-%s-%s-%s-dim-%d-iter-%d.png", kernel_name,
+               variant_name, tile_name, DIM, iterations);
 
       graphics_dump_image_to_file (filename);
     }
@@ -668,6 +700,15 @@ int main (int argc, char **argv)
     MPI_Finalize ();
 #endif
 
+#ifdef ENABLE_MONITORING
+#ifdef ENABLE_PAPI
+  if (do_cache)
+    easypap_perfcounter_finalize ();
+#endif
+#endif
+
+  ez_pthread_finalize ();
+
   return 0;
 }
 
@@ -678,6 +719,7 @@ static void usage (int val)
   fprintf (
       stderr,
       "\t-a\t| --arg <string>\t: pass argument <string> to draw function\n");
+  fprintf (stderr, "\t-c\t| --cache\t\t: enable cache monitoring\n");
   fprintf (stderr, "\t-d\t| --debug-flags <flags>\t: enable debug messages "
                    "(see debug.h)\n");
   fprintf (stderr, "\t-du\t| --dump\t\t: dump final image to disk\n");
@@ -727,7 +769,7 @@ static void usage (int val)
       "\t-ti\t| --trace-iter <n>\t: enable trace starting from iteration n\n");
   fprintf (stderr,
            "\t-v\t| --variant <name>\t: select variant <name> of kernel\n");
-  fprintf (stderr, "\t-wt\t| --with-tile <name>\t\t: select do_tile_<name>\n");
+  fprintf (stderr, "\t-wt\t| --with-tile <name>\t: select do_tile_<name>\n");
 
   exit (val);
 }
@@ -784,6 +826,36 @@ static void filter_args (int *argc, char *argv[])
           "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
 #else
       trace_may_be_used        = 1;
+#endif
+    } else if (!strcmp (*argv, "--cache") || !strcmp (*argv, "-c")) {
+#ifndef ENABLE_PAPI
+      fprintf (stderr, "Warning: cannot retrieve cache usage counters if ENABLE_PAPI is "
+                       "not defined.\n");
+#else
+      do_cache = 1;
+      int perf_event = open ("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
+      if (perf_event == -1) {
+        fprintf (stdout,
+                 "Couldn't open /proc/sys/kernel/perf_event_paranoid.\nCache "
+                 "recording aborted.\n");
+        do_cache = 0;
+      } else {
+        char perf_event_value[2];
+        if (read (perf_event, &perf_event_value, 2 * sizeof (char)) <= 0) {
+          fprintf (stdout, "Couldn't read value in "
+                           "/proc/sys/kernel/perf_event_paranoid.\nCache "
+                           "recording aborted.\n");
+          do_cache = 0;
+        } else {
+          if (atoi (perf_event_value) > 0) {
+            fprintf (stdout,
+                     "Warning: PAPI cache record may crash. Please "
+                     "set /proc/sys/kernel/perf_event_paranoid to 0 (or -1) "
+                     "or run as root.\nCache recording aborted.\n");
+            do_cache = 0;
+          }
+        }
+      }
 #endif
     } else if (!strcmp (*argv, "--trace-iter") || !strcmp (*argv, "-ti")) {
       if (*argc == 1) {

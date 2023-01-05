@@ -22,6 +22,7 @@ shall_we_continue()
 }
 
 PROGNAME=$0
+
 EASYPAPDIR=${EASYPAPDIR:-.}
 
 . ${EASYPAPDIR}/script/easypap-common.bash

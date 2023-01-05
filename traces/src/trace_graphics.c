@@ -10,8 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "error.h"
 #include "trace_common.h"
@@ -29,16 +29,24 @@
 #define WINDOW_MIN_WIDTH 1024
 // no WINDOW_MIN_HEIGHT: needs to be automatically computed
 
-#define MIN_TASK_HEIGHT 4
+#define MIN_TASK_HEIGHT 6
 #define MAX_TASK_HEIGHT 44
 
 #define MAX_PREVIEW_DIM 512
 #define MIN_PREVIEW_DIM 256
 
-#define Y_MARGIN 5
-#define CPU_ROW_HEIGHT (TASK_HEIGHT + 2 * Y_MARGIN + 2)
-#define GANTT_WIDTH (WINDOW_WIDTH - (LEFT_MARGIN + PREVIEW_DIM + TOP_MARGIN))
+#define MAX_CACHE_WIDTH (100 + 2)
+
+#define MAGNIFICATION 2
+#define Y_MARGIN 2
+#define cpu_row_height(taskh) ((taskh) + 2 * Y_MARGIN + 1)
+#define task_height(space) ((space) - 2 * Y_MARGIN - 1)
+
+#define GANTT_WIDTH                                                            \
+  (WINDOW_WIDTH -                                                              \
+   (LEFT_MARGIN + PREVIEW_DIM + 2 * RIGHT_MARGIN + CACHE_STATS_WIDTH))
 #define LEFT_MARGIN 64
+#define RIGHT_MARGIN 24
 #define TOP_MARGIN 48
 #define FONT_HEIGHT 20
 #define BOTTOM_MARGIN (FONT_HEIGHT + 4)
@@ -54,6 +62,15 @@ static SDL_Texture **square_tex_bright = NULL;
 static SDL_Texture **square_tex_dark   = NULL;
 static SDL_Texture *black_square       = NULL;
 static SDL_Texture *white_square       = NULL;
+static SDL_Texture *stat_frame_tex     = NULL;
+static SDL_Texture *stat_caption_tex   = NULL;
+static SDL_Texture *stat_background    = NULL;
+
+#define NB_CACHE_LEVELS 3
+
+static SDL_Texture *cache_tex[NB_CACHE_LEVELS] = {NULL, NULL, NULL};
+static unsigned cache_colors[NB_CACHE_LEVELS]  = {0xFFFF00FF, 0xFFC600FF,
+                                                  0xBF9503FF};
 
 #ifdef PRELOAD_THUMBNAILS
 static SDL_Texture **thumb_tex[MAX_TRACES] = {NULL, NULL};
@@ -63,31 +80,33 @@ static int TASK_HEIGHT   = MAX_TASK_HEIGHT;
 static int WINDOW_HEIGHT = -1;
 static int WINDOW_WIDTH  = -1;
 
-static int GANTT_HEIGHT, PREVIEW_DIM;
+static int GANTT_HEIGHT, PREVIEW_DIM, CACHE_STATS_WIDTH;
 
-static int BUBBLE_WIDTH, BUBBLE_HEIGHT;
+static int BUBBLE_WIDTH, BUBBLE_HEIGHT, REDUCED_BUBBLE_WIDTH,
+    REDUCED_BUBBLE_HEIGHT;
 
-static SDL_Window *window           = NULL;
-static SDL_Renderer *renderer       = NULL;
-static TTF_Font *the_font           = NULL;
-static SDL_Texture **perf_fill      = NULL;
-static SDL_Texture *text_texture    = NULL;
-static SDL_Texture *vertical_line   = NULL;
-static SDL_Texture *horizontal_line = NULL;
-static SDL_Texture *horizontal_bis  = NULL;
-static SDL_Texture *bulle_tex       = NULL;
-static SDL_Texture *us_tex          = NULL;
-static SDL_Texture *sigma_tex       = NULL;
-static SDL_Texture *tab_left        = NULL;
-static SDL_Texture *tab_right       = NULL;
-static SDL_Texture *tab_high        = NULL;
-static SDL_Texture *tab_low         = NULL;
-static SDL_Texture *align_tex       = NULL;
-static SDL_Texture *quick_nav_tex   = NULL;
-static SDL_Texture *track_tex       = NULL;
-static SDL_Texture *footprint_tex   = NULL;
-static SDL_Texture *digit_tex[10]   = {NULL};
-static SDL_Texture *mouse_tex       = NULL;
+static SDL_Window *window             = NULL;
+static SDL_Renderer *renderer         = NULL;
+static TTF_Font *the_font             = NULL;
+static SDL_Texture **perf_fill        = NULL;
+static SDL_Texture *text_texture      = NULL;
+static SDL_Texture *vertical_line     = NULL;
+static SDL_Texture *horizontal_line   = NULL;
+static SDL_Texture *horizontal_bis    = NULL;
+static SDL_Texture *bulle_tex         = NULL;
+static SDL_Texture *reduced_bulle_tex = NULL;
+static SDL_Texture *us_tex            = NULL;
+static SDL_Texture *sigma_tex         = NULL;
+static SDL_Texture *tab_left          = NULL;
+static SDL_Texture *tab_right         = NULL;
+static SDL_Texture *tab_high          = NULL;
+static SDL_Texture *tab_low           = NULL;
+static SDL_Texture *align_tex         = NULL;
+static SDL_Texture *quick_nav_tex     = NULL;
+static SDL_Texture *track_tex         = NULL;
+static SDL_Texture *footprint_tex     = NULL;
+static SDL_Texture *digit_tex[10]     = {NULL};
+static SDL_Texture *mouse_tex         = NULL;
 
 static SDL_Rect align_rect, quick_nav_rect, track_rect, footprint_rect;
 
@@ -140,42 +159,33 @@ static inline unsigned layout_get_min_width (void)
   return WINDOW_MIN_WIDTH;
 }
 
-static unsigned layout_get_min_height (void)
+static unsigned layout_get_height (unsigned preview_dim, unsigned task_height)
 {
   unsigned need_left, need_right, gantt_h;
 
   if (nb_traces == 1) {
-    need_right = TOP_MARGIN + MIN_PREVIEW_DIM + BOTTOM_MARGIN;
-    gantt_h    = trace[0].nb_cores * (MIN_TASK_HEIGHT + 2 * Y_MARGIN + 2);
+    need_right = TOP_MARGIN + preview_dim + BOTTOM_MARGIN;
+    gantt_h    = trace[0].nb_cores * cpu_row_height (task_height);
     need_left  = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
   } else {
     need_right =
-        TOP_MARGIN + 2 * MIN_PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
-    gantt_h = (trace[0].nb_cores + trace[1].nb_cores) *
-                  (MIN_TASK_HEIGHT + 2 * Y_MARGIN + 2) +
-              INTERTRACE_MARGIN;
+        TOP_MARGIN + 2 * preview_dim + INTERTRACE_MARGIN + BOTTOM_MARGIN;
+    gantt_h =
+        (trace[0].nb_cores + trace[1].nb_cores) * cpu_row_height (task_height) +
+        INTERTRACE_MARGIN;
     need_left = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
   }
   return max (need_left, need_right);
 }
 
+static unsigned layout_get_min_height (void)
+{
+  return layout_get_height (MIN_PREVIEW_DIM, MIN_TASK_HEIGHT);
+}
+
 static unsigned layout_get_max_height (void)
 {
-  unsigned need_left, need_right, gantt_h;
-
-  if (nb_traces == 1) {
-    need_right = TOP_MARGIN + MAX_PREVIEW_DIM + BOTTOM_MARGIN;
-    gantt_h    = trace[0].nb_cores * (MAX_TASK_HEIGHT + 2 * Y_MARGIN + 2);
-    need_left  = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
-  } else {
-    need_right =
-        TOP_MARGIN + 2 * MAX_PREVIEW_DIM + INTERTRACE_MARGIN + BOTTOM_MARGIN;
-    gantt_h = (trace[0].nb_cores + trace[1].nb_cores) *
-                  (MAX_TASK_HEIGHT + 2 * Y_MARGIN + 2) +
-              INTERTRACE_MARGIN;
-    need_left = TOP_MARGIN + gantt_h + BOTTOM_MARGIN;
-  }
-  return max (need_left, need_right);
+  return layout_get_height (MAX_PREVIEW_DIM, MAX_TASK_HEIGHT);
 }
 
 static void layout_place_buttons (void)
@@ -194,7 +204,7 @@ static void layout_place_buttons (void)
   footprint_rect.y = 2;
 }
 
-static void layout_recompute (void)
+static void layout_recompute (int at_init)
 {
   unsigned need_left;
 
@@ -208,7 +218,7 @@ static void layout_recompute (void)
     // See how much space we have for GANTT chart
     unsigned space = WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
     space /= trace[0].nb_cores;
-    TASK_HEIGHT = space - 2 * Y_MARGIN - 2;
+    TASK_HEIGHT = task_height(space);
     if (TASK_HEIGHT < MIN_TASK_HEIGHT)
       exit_with_error ("Window height (%d) is not big enough to display so "
                        "many CPUS (%d)\n",
@@ -217,14 +227,20 @@ static void layout_recompute (void)
     if (TASK_HEIGHT > MAX_TASK_HEIGHT)
       TASK_HEIGHT = MAX_TASK_HEIGHT;
 
-    GANTT_HEIGHT = trace[0].nb_cores * CPU_ROW_HEIGHT;
+    if (at_init)
+      WINDOW_HEIGHT = layout_get_height (PREVIEW_DIM, TASK_HEIGHT);
 
+    GANTT_HEIGHT = trace[0].nb_cores * cpu_row_height (TASK_HEIGHT);
+
+    CACHE_STATS_WIDTH =
+        trace[0].has_cache_data ? MAX_CACHE_WIDTH + RIGHT_MARGIN : 0;
     trace_display_info[0].gantt.x = LEFT_MARGIN;
     trace_display_info[0].gantt.y = TOP_MARGIN;
     trace_display_info[0].gantt.w = GANTT_WIDTH;
     trace_display_info[0].gantt.h = GANTT_HEIGHT;
 
-    trace_display_info[0].mosaic.x = LEFT_MARGIN + GANTT_WIDTH + TOP_MARGIN / 2;
+    trace_display_info[0].mosaic.x =
+        LEFT_MARGIN + GANTT_WIDTH + RIGHT_MARGIN + CACHE_STATS_WIDTH;
     trace_display_info[0].mosaic.y = TOP_MARGIN;
     trace_display_info[0].mosaic.w = PREVIEW_DIM;
     trace_display_info[0].mosaic.h = PREVIEW_DIM;
@@ -243,7 +259,7 @@ static void layout_recompute (void)
     unsigned space =
         WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN - INTERTRACE_MARGIN;
     space /= (trace[0].nb_cores + trace[1].nb_cores);
-    TASK_HEIGHT = space - 2 * Y_MARGIN - 2;
+    TASK_HEIGHT = task_height(space);
     if (TASK_HEIGHT < MIN_TASK_HEIGHT)
       exit_with_error ("Window height (%d) is not big enough to display so "
                        "many CPUS (%d)\n",
@@ -252,9 +268,17 @@ static void layout_recompute (void)
     if (TASK_HEIGHT > MAX_TASK_HEIGHT)
       TASK_HEIGHT = MAX_TASK_HEIGHT;
 
+    if (at_init)
+      WINDOW_HEIGHT = layout_get_height (PREVIEW_DIM, TASK_HEIGHT);
+
+    CACHE_STATS_WIDTH = (trace[0].has_cache_data || trace[1].has_cache_data)
+                            ? MAX_CACHE_WIDTH + RIGHT_MARGIN
+                            : 0;
+
     // First try with max task height
-    GANTT_HEIGHT = (trace[0].nb_cores + trace[1].nb_cores) * CPU_ROW_HEIGHT +
-                   INTERTRACE_MARGIN;
+    GANTT_HEIGHT =
+        (trace[0].nb_cores + trace[1].nb_cores) * cpu_row_height (TASK_HEIGHT) +
+        INTERTRACE_MARGIN;
     need_left = TOP_MARGIN + GANTT_HEIGHT + BOTTOM_MARGIN;
 
     if (WINDOW_HEIGHT > need_left)
@@ -263,9 +287,11 @@ static void layout_recompute (void)
     trace_display_info[0].gantt.x = LEFT_MARGIN;
     trace_display_info[0].gantt.y = TOP_MARGIN + padding / 2;
     trace_display_info[0].gantt.w = GANTT_WIDTH;
-    trace_display_info[0].gantt.h = trace[0].nb_cores * CPU_ROW_HEIGHT;
+    trace_display_info[0].gantt.h =
+        trace[0].nb_cores * cpu_row_height (TASK_HEIGHT);
 
-    trace_display_info[0].mosaic.x = LEFT_MARGIN + GANTT_WIDTH + TOP_MARGIN / 2;
+    trace_display_info[0].mosaic.x =
+        LEFT_MARGIN + GANTT_WIDTH + RIGHT_MARGIN + CACHE_STATS_WIDTH;
     trace_display_info[0].mosaic.y = TOP_MARGIN;
     trace_display_info[0].mosaic.w = PREVIEW_DIM;
     trace_display_info[0].mosaic.h = PREVIEW_DIM;
@@ -274,11 +300,13 @@ static void layout_recompute (void)
     trace_display_info[1].gantt.y = TOP_MARGIN + INTERTRACE_MARGIN +
                                     trace_display_info[0].gantt.h + padding / 2;
     trace_display_info[1].gantt.w = GANTT_WIDTH;
-    trace_display_info[1].gantt.h = trace[1].nb_cores * CPU_ROW_HEIGHT;
+    trace_display_info[1].gantt.h =
+        trace[1].nb_cores * cpu_row_height (TASK_HEIGHT);
 
     trace_display_info[1].mosaic.w = PREVIEW_DIM;
     trace_display_info[1].mosaic.h = PREVIEW_DIM;
-    trace_display_info[1].mosaic.x = LEFT_MARGIN + GANTT_WIDTH + TOP_MARGIN / 2;
+    trace_display_info[1].mosaic.x =
+        LEFT_MARGIN + GANTT_WIDTH + RIGHT_MARGIN + CACHE_STATS_WIDTH;
     trace_display_info[1].mosaic.y =
         WINDOW_HEIGHT - BOTTOM_MARGIN - trace_display_info[1].mosaic.h;
   }
@@ -485,6 +513,61 @@ static void create_task_textures (unsigned nb_cores)
   SDL_FreeSurface (s);
   free (img);
 
+  // Cache stats background
+  const unsigned width  = MAX_CACHE_WIDTH;
+  const unsigned height = 18;
+
+  img = malloc (width * height * sizeof (Uint32));
+  s = SDL_CreateRGBSurfaceFrom (img, width, height, 32, width * sizeof (Uint32),
+                                0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
+  if (s == NULL)
+    exit_with_error ("SDL_CreateRGBSurfaceFrom () failed");
+
+  attenuation_depart = 0.;
+  attenuation_finale = 1.0;
+
+  for (int j = 0; j < width; j++) {
+    unsigned r = 130; // 106;
+    unsigned g = 130; // 106;
+    unsigned b = 165; // 138;
+
+    float coef =
+        attenuation_depart +
+        (((float)j) / width) * (attenuation_finale - attenuation_depart);
+    r = r * coef + backgrd_color.r * (1.0 - coef);
+    g = g * coef + backgrd_color.g * (1.0 - coef);
+    b = b * coef + backgrd_color.b * (1.0 - coef);
+
+    for (int i = 0; i < height; i++)
+      img[i * width + j] = (r << 24) | (g << 16) | (b << 8) | 255;
+  }
+
+  stat_background = SDL_CreateTextureFromSurface (renderer, s);
+
+  SDL_FreeSurface (s);
+  free (img);
+
+  // Cache stats frame
+  img = malloc (MAX_CACHE_WIDTH * (MIN_TASK_HEIGHT + 2) * sizeof (Uint32));
+  s   = SDL_CreateRGBSurfaceFrom (img, MAX_CACHE_WIDTH, MIN_TASK_HEIGHT + 2, 32,
+                                  MAX_CACHE_WIDTH * sizeof (Uint32), 0xff000000,
+                                  0x00ff0000, 0x0000ff00, 0x000000ff);
+  if (s == NULL)
+    exit_with_error ("SDL_CreateRGBSurfaceFrom failed: %s", SDL_GetError ());
+
+  for (int i = 0; i < MIN_TASK_HEIGHT + 2; i++)
+    for (int j = 0; j < MAX_CACHE_WIDTH; j++)
+      if (i == 0 || i == MIN_TASK_HEIGHT + 1 || j == 0 ||
+          j == MAX_CACHE_WIDTH - 1)
+        img[i * MAX_CACHE_WIDTH + j] = 0xffffffff;
+      else
+        img[i * MAX_CACHE_WIDTH + j] = 0x000000ff;
+
+  stat_frame_tex = SDL_CreateTextureFromSurface (renderer, s);
+
+  SDL_FreeSurface (s);
+  free (img);
+
   s = SDL_CreateRGBSurface (0, SQUARE_SIZE, SQUARE_SIZE, 32, 0xff000000,
                             0x00ff0000, 0x0000ff00, 0x000000ff);
   if (s == NULL)
@@ -505,6 +588,11 @@ static void create_task_textures (unsigned nb_cores)
     square_tex_dark[c]   = SDL_CreateTextureFromSurface (renderer, s);
     // Dark tiles are semi-transparent
     SDL_SetTextureAlphaMod (square_tex_dark[c], TILE_ALPHA);
+  }
+
+  for (int l = 0; l < NB_CACHE_LEVELS; l++) {
+    SDL_FillRect (s, NULL, cache_colors[l]);
+    cache_tex[l] = SDL_CreateTextureFromSurface (renderer, s);
   }
 
   SDL_FreeSurface (s);
@@ -611,17 +699,33 @@ static void create_task_ids_textures (TTF_Font *font)
   }
 }
 
+static void to_sdl_color (uint32_t src, SDL_Color *dst)
+{
+  dst->a = src & 0xFF;
+  src >>= 8;
+  dst->b = src & 0xFF;
+  src >>= 8;
+  dst->g = src & 0xFF;
+  src >>= 8;
+  dst->r = src;
+}
+
 static void blit_on_surface (SDL_Surface *surface, TTF_Font *font, int trace,
-                             unsigned line, char *msg)
+                             unsigned line, char *msg, unsigned color)
 {
   SDL_Rect dst;
-  SDL_Surface *s = TTF_RenderText_Blended (font, msg, silver_color);
+  SDL_Color col;
+
+  to_sdl_color (color, &col);
+
+  SDL_Surface *s = TTF_RenderText_Blended (font, msg, col);
   if (s == NULL)
     exit_with_error ("TTF_RenderText_Blended failed: %s", SDL_GetError ());
 
   dst.x = LEFT_MARGIN - s->w;
-  dst.y = trace_display_info[trace].gantt.y + CPU_ROW_HEIGHT * line +
-          CPU_ROW_HEIGHT / 2 - (s->h / 2);
+  dst.y = trace_display_info[trace].gantt.y +
+          cpu_row_height (TASK_HEIGHT) * line +
+          cpu_row_height (TASK_HEIGHT) / 2 - (s->h / 2);
 
   SDL_BlitSurface (s, NULL, surface, &dst);
   SDL_FreeSurface (s);
@@ -648,7 +752,7 @@ static void create_cpu_textures (TTF_Font *font)
       } else
         snprintf (msg, 32, "CPU %2d ", c);
 
-      blit_on_surface (surface, font, t, c, msg);
+      blit_on_surface (surface, font, t, c, msg, cpu_colors[c % MAX_COLORS]);
     }
   }
 
@@ -707,6 +811,13 @@ static void create_misc_tex (void)
   mouse_tex = SDL_CreateTextureFromSurface (renderer, surf);
   SDL_FreeSurface (surf);
 
+  surf = IMG_Load ("./traces/img/caption.png");
+  if (surf == NULL)
+    exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
+
+  stat_caption_tex = SDL_CreateTextureFromSurface (renderer, surf);
+  SDL_FreeSurface (surf);
+
   surf = IMG_Load ("./traces/img/frame.png");
   if (surf == NULL)
     exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
@@ -715,6 +826,16 @@ static void create_misc_tex (void)
   BUBBLE_HEIGHT = surf->h;
 
   bulle_tex = SDL_CreateTextureFromSurface (renderer, surf);
+  SDL_FreeSurface (surf);
+
+  surf = IMG_Load ("./traces/img/frame-reduced.png");
+  if (surf == NULL)
+    exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
+
+  REDUCED_BUBBLE_WIDTH  = surf->w;
+  REDUCED_BUBBLE_HEIGHT = surf->h;
+
+  reduced_bulle_tex = SDL_CreateTextureFromSurface (renderer, surf);
   SDL_FreeSurface (surf);
 
   surf = IMG_Load ("./traces/img/quick-nav.png");
@@ -937,20 +1058,70 @@ static void display_selection (void)
   }
 }
 
+static void display_cache_histo (const int64_t *counters, int x, int y, int w,
+                                 int h)
+{
+  SDL_Rect dst;
+  int level[NB_CACHE_LEVELS];
+
+  if (counters[EASYPAP_ALL_LOADS] == 0)
+    return;
+
+  // L1 HIT
+  level[0] = ((counters[EASYPAP_ALL_LOADS] - counters[EASYPAP_L3_MISS] -
+               counters[EASYPAP_L3_HIT] - counters[EASYPAP_L2_HIT]) *
+              w) /
+             counters[EASYPAP_ALL_LOADS];
+  // L2 HIT
+  level[1] = counters[EASYPAP_L2_HIT] * w / counters[EASYPAP_ALL_LOADS];
+  // L3 HIT
+  level[2] = counters[EASYPAP_L3_HIT] * w / counters[EASYPAP_ALL_LOADS];
+
+  dst.x = x;
+  dst.y = y;
+  dst.h = h;
+  for (int l = 0; l < NB_CACHE_LEVELS; l++) {
+    dst.w = level[l];
+    SDL_RenderCopy (renderer, cache_tex[l], NULL, &dst);
+    dst.x += dst.w;
+  }
+}
+
 static void display_bubble (int x, int y, unsigned long duration,
-                            unsigned with_sigma)
+                            unsigned with_sigma, unsigned cache_info,
+                            const int64_t *counters)
 {
   SDL_Rect dst;
 
-  dst.x = x - (BUBBLE_WIDTH >> 1);
-  dst.y = y - BUBBLE_HEIGHT;
-  dst.w = BUBBLE_WIDTH;
-  dst.h = BUBBLE_HEIGHT;
+  if (cache_info) {
+    dst.x = x - (BUBBLE_WIDTH >> 1);
+    dst.y = y - BUBBLE_HEIGHT;
+    dst.w = BUBBLE_WIDTH;
+    dst.h = BUBBLE_HEIGHT;
 
-  SDL_RenderCopy (renderer, bulle_tex, NULL, &dst);
+    SDL_RenderCopy (renderer, bulle_tex, NULL, &dst);
 
-  display_duration (duration, x - (BUBBLE_WIDTH >> 1) + 1, dst.y + 1, dst.w - 3,
-                    with_sigma);
+    display_cache_histo (counters, dst.x + 8, dst.y + 20, 100, 8);
+#if 0
+    printf ("Caches stats: %lld L1 hit, %lld L2 hit, %lld L3 hit, %lld RAM\n",
+            (counters[EASYPAP_ALL_LOADS] - counters[EASYPAP_L3_MISS] -
+             counters[EASYPAP_L3_HIT] - counters[EASYPAP_L2_HIT]),
+            counters[EASYPAP_L2_HIT], counters[EASYPAP_L3_HIT],
+            counters[EASYPAP_L3_MISS]);
+#endif
+    display_duration (duration, x - (BUBBLE_WIDTH >> 1) + 1, dst.y + 1,
+                      dst.w - 3, with_sigma);
+  } else {
+    dst.x = x - (REDUCED_BUBBLE_WIDTH >> 1);
+    dst.y = y - REDUCED_BUBBLE_HEIGHT;
+    dst.w = REDUCED_BUBBLE_WIDTH;
+    dst.h = REDUCED_BUBBLE_HEIGHT;
+
+    SDL_RenderCopy (renderer, reduced_bulle_tex, NULL, &dst);
+
+    display_duration (duration, x - (REDUCED_BUBBLE_WIDTH >> 1) + 1, dst.y + 1,
+                      dst.w - 3, with_sigma);
+  }
 }
 
 typedef struct
@@ -960,22 +1131,16 @@ typedef struct
   unsigned iter;
   long cumulated_duration;
   SDL_Rect area;
+  perfcounter_array_t cumulated_cstats;
 } selected_task_info_t;
 
 #define SELECTED_TASK_INFO_INITIALIZER                                         \
   {                                                                            \
-    NULL, NULL, 0, 0,                                                          \
+    NULL, NULL, 0, 0, {0, 0, 0, 0},                                            \
     {                                                                          \
       0, 0, 0, 0                                                               \
     }                                                                          \
   }
-
-static void selected_task_info_init (selected_task_info_t *info)
-{
-  info->task               = NULL;
-  info->trace              = NULL;
-  info->cumulated_duration = 0;
-}
 
 static void display_mouse_selection (const selected_task_info_t *selected)
 {
@@ -1023,14 +1188,17 @@ static void display_mouse_selection (const selected_task_info_t *selected)
 
       if (t != NULL) {
         display_bubble (mouse.x, trace_display_info[tr->num].gantt.y - 4,
-                        t->end_time - t->start_time, 0);
+                        t->end_time - t->start_time, 0, tr->has_cache_data,
+                        t->counters);
 
         if (tracking_mode) {
           // int iter = selected->iter - tr->first_iteration;
           // int x = (time_to_pixel (iteration_start_time (tr, iter)) +
           //         time_to_pixel (iteration_end_time (tr, iter))) >> 1;
           int y = trace_display_info[1 - tr->num].gantt.y - 4;
-          display_bubble (mouse.x, y, selected->cumulated_duration, 1);
+          display_bubble (mouse.x, y, selected->cumulated_duration, 1,
+                          trace[1 - tr->num].has_cache_data,
+                          selected->cumulated_cstats);
         }
 
         if (t->task_id) { // Do not display "anonymous" IDs
@@ -1132,8 +1300,15 @@ static void display_gantt_background (trace_t *tr, int _t, int first_it)
     r.h = trace_display_info[_t].gantt.h;
 
     // Background of iterations is black
-    SDL_SetRenderDrawColor (renderer, 0, 0, 0, 255);
-    SDL_RenderFillRect (renderer, &r);
+    // SDL_RenderCopy (renderer, black_square, NULL, &r);
+    {
+      SDL_Rect dst = {r.x, r.y, r.w, TASK_HEIGHT + 2 * Y_MARGIN};
+
+      for (int c = 0; c < tr->nb_cores; c++) {
+        SDL_RenderCopy (renderer, black_square, NULL, &dst);
+        dst.y += cpu_row_height (TASK_HEIGHT);
+      }
+    }
 
     if (trace_data_align_mode && tr->iteration[it].gap > 0) {
       SDL_Rect gap;
@@ -1153,17 +1328,32 @@ static void display_gantt_background (trace_t *tr, int _t, int first_it)
                              trace_display_info[_t].gantt.h + 1,
                          r.x, r.w);
   }
+}
 
-  // Draw the separation lines
-  {
-    SDL_Rect dst = {LEFT_MARGIN,
-                    trace_display_info[_t].gantt.y + CPU_ROW_HEIGHT - 2,
-                    GANTT_WIDTH, 2};
+static void display_cache_stats (trace_t *tr, int _t,
+                                 perfcounter_array_t *stats)
+{
+  // Draw cache stats background
+  SDL_Rect r;
 
-    for (int c = 0; c < tr->nb_cores; c++) {
-      SDL_RenderCopy (renderer, perf_fill[c % MAX_COLORS], NULL, &dst);
-      dst.y += CPU_ROW_HEIGHT;
-    }
+  r.x = trace_display_info[_t].gantt.x + trace_display_info[_t].gantt.w +
+        RIGHT_MARGIN;
+  r.w = MAX_CACHE_WIDTH;
+  r.y = trace_display_info[_t].gantt.y - 16;
+  r.h = 18;
+  SDL_RenderCopy (renderer, stat_background, NULL, &r);
+
+  r.h = 16;
+  SDL_RenderCopy (renderer, stat_caption_tex, NULL, &r);
+
+  r.y += r.h + cpu_row_height (TASK_HEIGHT) / 2 - MIN_TASK_HEIGHT / 2;
+  r.h = MIN_TASK_HEIGHT + 2;
+
+  for (int c = 0; c < tr->nb_cores; c++) {
+    SDL_RenderCopy (renderer, stat_frame_tex, NULL, &r);
+    display_cache_histo (&stats[c][0], r.x + 1, r.y + 1, r.w - 2,
+                         MIN_TASK_HEIGHT);
+    r.y += cpu_row_height (TASK_HEIGHT);
   }
 }
 
@@ -1172,13 +1362,19 @@ static void trace_graphics_display_trace (unsigned _t,
 {
   trace_t *const tr       = trace + _t;
   const unsigned first_it = trace_ctrl[_t].first_displayed_iter - 1;
-  trace_task_t *to_be_emphasized[max_cores];
-  SDL_Rect target_tile_rect; // Only used when mouse is over Mosaic
-  int target_tile = 0;       // Only used when mouse is over Mosaic
-  int cpu         = 0;       // Only used in tracking mode
+  trace_task_t
+      *to_be_emphasized[max_cores]; // FIXME: there is no need to use max_cores
+                                    // any more. The number of cores within the
+                                    // trace should be ok.
+  SDL_Rect target_tile_rect;        // Only used when mouse is over Mosaic
+  int target_tile = 0;              // Only used when mouse is over Mosaic
+  int cpu         = 0;              // Only used in tracking mode
   unsigned wh     = trace_display_info[_t].gantt.y + Y_MARGIN;
+  perfcounter_array_t cumulated_cache_stat[max_cores];
 
   bzero (to_be_emphasized, max_cores * sizeof (trace_task_t *));
+  if (tr->has_cache_data)
+    bzero (cumulated_cache_stat, max_cores * sizeof (perfcounter_array_t));
 
   // Set clipping region
   {
@@ -1242,9 +1438,12 @@ static void trace_graphics_display_trace (unsigned _t,
             break;
 
           // Ok, this task should appear on the screen
-          SDL_Rect dst;
+          if (tr->has_cache_data)
+            for (int l = 0; l < EASYPAP_NB_COUNTERS; l++)
+              cumulated_cache_stat[c][l] = t->counters[l];
 
           // Project the task in the Gantt chart
+          SDL_Rect dst;
           dst.x = time_to_pixel (task_start_time (tr, t));
           dst.y = wh;
           dst.w = time_to_pixel (task_end_time (tr, t)) - dst.x + 1;
@@ -1282,10 +1481,10 @@ static void trace_graphics_display_trace (unsigned _t,
                 }
                 // The task is under the mouse cursor: display it a little
                 // bigger!
-                dst.x -= 3;
-                dst.y -= 3;
-                dst.w += 6;
-                dst.h += 6;
+                dst.x -= MAGNIFICATION;
+                dst.y -= MAGNIFICATION;
+                dst.w += MAGNIFICATION * 2;
+                dst.h += MAGNIFICATION * 2;
               }
 
               if (!horiz_mode && !tracking_mode && t->w &&
@@ -1304,6 +1503,8 @@ static void trace_graphics_display_trace (unsigned _t,
               get_raw_rect (t, &r);
               if (rects_do_intersect (&r, &selected->area)) {
                 selected->cumulated_duration += t->end_time - t->start_time;
+                for (int l = 0; l < EASYPAP_NB_COUNTERS; l++)
+                  selected->cumulated_cstats[l] += t->counters[l];
 
                 SDL_RenderCopy (renderer, perf_fill[MAX_COLORS], NULL,
                                 &dst); // white
@@ -1332,7 +1533,7 @@ static void trace_graphics_display_trace (unsigned _t,
             SDL_RenderCopy (renderer, perf_fill[task_color], NULL, &dst);
         }
 
-      wh += CPU_ROW_HEIGHT;
+      wh += cpu_row_height (TASK_HEIGHT);
     }
 
   // Display mouse selection rectangle (if any)
@@ -1340,6 +1541,9 @@ static void trace_graphics_display_trace (unsigned _t,
 
   // Disable clipping region
   SDL_RenderSetClipRect (renderer, NULL);
+
+  if (tr->has_cache_data)
+    display_cache_stats (tr, _t, cumulated_cache_stat);
 
   display_tile_background (_t);
 
@@ -1500,7 +1704,8 @@ void trace_graphics_save_screenshot (void)
     struct tm *tm_info;
     timer   = time (NULL);
     tm_info = localtime (&timer);
-    strftime (filename, MAX_FILENAME, "screenshot-%Y_%m_%d-%H_%M_%S.png", tm_info);
+    strftime (filename, MAX_FILENAME, "screenshot-%Y_%m_%d-%H_%M_%S.png",
+              tm_info);
   }
 
   // Save screenshot as PNG file
@@ -1973,7 +2178,7 @@ void trace_graphics_relayout (unsigned w, unsigned h)
   WINDOW_WIDTH  = w;
   WINDOW_HEIGHT = h;
 
-  layout_recompute ();
+  layout_recompute (0);
   layout_place_buttons ();
 
   create_cpu_textures (the_font);
@@ -1990,18 +2195,30 @@ void trace_graphics_init (unsigned w, unsigned h)
                    iteration_end_time (trace + nb_traces - 1,
                                        trace[nb_traces - 1].nb_iterations - 1));
 
+  if (SDL_Init (SDL_INIT_VIDEO) != 0)
+    exit_with_error ("SDL_Init");
+
+  SDL_DisplayMode dm;
+
+  if (SDL_GetDesktopDisplayMode (0, &dm) != 0)
+    exit_with_error ("SDL_GetDesktopDisplayMode failed: %s", SDL_GetError ());
+
+  dm.h -= 128; // to account for headers, footers, etc.
+
   const unsigned min_width  = layout_get_min_width ();
   const unsigned min_height = layout_get_min_height ();
 
   WINDOW_WIDTH  = max (w, min_width);
-  WINDOW_HEIGHT = max (h, min_height);
+  WINDOW_HEIGHT = max (dm.h, min_height);
+
+  if (min_height > dm.h)
+    exit_with_error ("Window height (%d) is not big enough to display so "
+                     "many CPUS\n",
+                     WINDOW_HEIGHT);
 
   WINDOW_HEIGHT = min (WINDOW_HEIGHT, layout_get_max_height ());
 
-  layout_recompute ();
-
-  if (SDL_Init (SDL_INIT_VIDEO) != 0)
-    exit_with_error ("SDL_Init");
+  layout_recompute (1);
 
   char wintitle[1024];
 

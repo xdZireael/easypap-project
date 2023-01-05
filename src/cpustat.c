@@ -9,9 +9,9 @@
 #include <sys/mman.h>
 
 #include "cpustat.h"
-#include "global.h"
 #include "debug.h"
 #include "error.h"
+#include "global.h"
 #include "graphics.h"
 #include "time_macros.h"
 #include "trace_common.h"
@@ -20,19 +20,19 @@
 #define HISTOGRAM_HEIGHT 100
 #define BAR_WIDTH 4
 #define BAR_HEIGHT HISTOGRAM_HEIGHT
-#define PERFMETER_HEIGHT 16
 #define PERFMETER_WIDTH HISTOGRAM_WIDTH
 #define RIGHT_MARGIN 16
 #define LEFT_MARGIN 80
-#define INTERMARGIN 4
 #define TOP_MARGIN 16
 #define BOTTOM_MARGIN 16
+#define MAX_WINDOW_HEIGHT 1024
 
-unsigned WINDOW_HEIGHT         = 0;
-unsigned WINDOW_WIDTH          = 0;
-unsigned INITIAL_WINDOW_HEIGHT = 0;
-unsigned compteur              = 0;
-unsigned co                    = 0;
+static unsigned PERFMETER_HEIGHT = 16;
+static unsigned INTERMARGIN      = 8;
+
+static unsigned WINDOW_HEIGHT         = 0;
+static unsigned WINDOW_WIDTH          = 0;
+static unsigned INITIAL_WINDOW_HEIGHT = 0;
 
 static SDL_Window *win           = NULL;
 static SDL_Renderer *ren         = NULL;
@@ -48,8 +48,8 @@ typedef struct
   long start_time, end_time, cumulated_work, cumulated_idle, nb_tiles;
 } cpu_stat_t;
 
-static unsigned NBCORES      = 1;
-static unsigned NBGPUS       = 0;
+static unsigned NBCORES = 1;
+static unsigned NBGPUS  = 0;
 
 static cpu_stat_t *cpu_stats = NULL;
 
@@ -57,7 +57,7 @@ float cpustat_activity_ratio (int who);
 
 static float idle_total (void)
 {
-  long total = 0, idle  = 0;
+  long total = 0, idle = 0;
 
   for (int c = 0; c < NBCORES + NBGPUS; c++) {
     idle  = idle + cpu_stats[c].cumulated_idle;
@@ -254,16 +254,35 @@ static void cpustat_draw_idleness (void)
 
 void cpustat_init (int x, int y)
 {
+  /*
+  SDL_DisplayMode DM;
+
+  SDL_GetCurrentDisplayMode(0, &DM);
+  printf ("Display size: %dx%d\n", DM.w, DM.h);
+*/
+
   NBCORES = easypap_requested_number_of_threads ();
-  NBGPUS = easypap_number_of_gpus ();
+  NBGPUS  = easypap_number_of_gpus ();
 
   cpu_stats = malloc ((NBCORES + NBGPUS) * sizeof (cpu_stat_t));
 
-  WINDOW_WIDTH          = LEFT_MARGIN + PERFMETER_WIDTH + RIGHT_MARGIN;
-  INITIAL_WINDOW_HEIGHT = TOP_MARGIN + BOTTOM_MARGIN +
-                          (NBCORES + NBGPUS) * PERFMETER_HEIGHT +
-                          (NBCORES + NBGPUS - 1) * INTERMARGIN;
-  WINDOW_HEIGHT = INITIAL_WINDOW_HEIGHT + INTERMARGIN + HISTOGRAM_HEIGHT;
+  for (;;) {
+    WINDOW_WIDTH          = LEFT_MARGIN + PERFMETER_WIDTH + RIGHT_MARGIN;
+    INITIAL_WINDOW_HEIGHT = TOP_MARGIN + BOTTOM_MARGIN +
+                            (NBCORES + NBGPUS) * PERFMETER_HEIGHT +
+                            (NBCORES + NBGPUS - 1) * INTERMARGIN;
+    WINDOW_HEIGHT = INITIAL_WINDOW_HEIGHT + INTERMARGIN + HISTOGRAM_HEIGHT;
+
+    if (WINDOW_HEIGHT <= MAX_WINDOW_HEIGHT)
+      break;
+
+    if (INTERMARGIN > 1)
+      INTERMARGIN -= 1;
+    else if (PERFMETER_HEIGHT > 4)
+      PERFMETER_HEIGHT -= 2;
+    else
+      exit_with_error ("Sorry, I'm unable to display so many CPU meters");
+  }
 
   win = SDL_CreateWindow ("Activity Monitor", x, y, WINDOW_WIDTH, WINDOW_HEIGHT,
                           SDL_WINDOW_SHOWN);
@@ -336,8 +355,7 @@ void cpustat_freeze (long now)
 
 float cpustat_activity_ratio (int who)
 {
-  long total =
-      cpu_stats[who].cumulated_work + cpu_stats[who].cumulated_idle;
+  long total = cpu_stats[who].cumulated_work + cpu_stats[who].cumulated_idle;
 
   if (total == 0)
     return 0.0;
@@ -357,9 +375,9 @@ void cpustat_display_stats (void)
 
   SDL_RenderPresent (ren);
 
-  //for (int c = 0; c < NBCORES; c++)
-  //  PRINT_DEBUG ('m', "CPU Utilization for core %2d: %3.2f\n", c,
-  //               100.0 * cpustat_activity_ratio (c));
+  // for (int c = 0; c < NBCORES; c++)
+  //   PRINT_DEBUG ('m', "CPU Utilization for core %2d: %3.2f\n", c,
+  //                100.0 * cpustat_activity_ratio (c));
 }
 
 void cpustat_clean (void)

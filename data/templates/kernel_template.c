@@ -30,7 +30,7 @@ int <template>_do_tile_default (int x, int y, int width, int height)
 {
   for (int i = y; i < y + height; i++)
     for (int j = x; j < x + width; j++)
-      cur_img (i, j) = compute_color (i, j);
+      next_img (i, j) = compute_color (i, j);
 
   return 0;
 }

@@ -438,21 +438,30 @@ void ocl_build_program (int list_variants)
   else
     endianness = "-DIS_BIG_ENDIAN";
 
+  char *arch= "";
+#if ARCH == X86_64
+  arch = "-DX86_64_ARCH";
+#elif ARCH == ARM64
+  arch = "-DARM64_ARCH";
+#endif
+
   if (draw_param)
     sprintf (buffer,
              "-cl-mad-enable -cl-fast-relaxed-math"
              " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d "
              "-DGPU_TILE_H=%d -DKERNEL_%s"
-             " -DPARAM=%s %s %s",
+             " -DPARAM=%s %s %s %s",
              DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name,
-             draw_param, debug_str, endianness);
+             draw_param, debug_str, endianness, arch);
   else
     sprintf (buffer,
              "-cl-mad-enable -cl-fast-relaxed-math"
              " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d "
-             "-DGPU_TILE_H=%d -DKERNEL_%s %s %s",
+             "-DGPU_TILE_H=%d -DKERNEL_%s %s %s %s",
              DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name,
-             debug_str, endianness);
+             debug_str, endianness, arch);
+
+  // printf ("OpenCL flags: %s\n", buffer);
 
   err = clBuildProgram (program, 0, NULL, buffer, NULL, NULL);
 

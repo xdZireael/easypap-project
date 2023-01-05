@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
 
-_dir=`dirname $BASH_SOURCE`
-_dir=`dirname $_dir`
-
-. ${_dir}/script/easypap-utilities.bash
-
-unset _dir
-
 _easypap_completions()
 {
     local LONG_OPTIONS=("--help" "--load-image" "--size" "--kernel" "--variant" "--monitoring" "--thumbnails"
                         "--trace" "--no-display" "--iterations" "--nb-tiles" "--tile-size" "--arg" "--first-touch"
                         "--label" "--mpirun" "--soft-rendering" "--show-ocl" "--tile-width" "--tile-height"
-                        "--trace-iter" "--thumbnails-iter" "--with-tile")
+                        "--trace-iter" "--thumbnails-iter" "--with-tile" "--cache")
     local SHORT_OPTIONS=("-h" "-l" "-s" "-k" "-v" "-m" "-tn"
                          "-t" "-n" "-i" "-nt" "-ts" "-a" "-ft"
                          "-lb" "-mpi" "-sr" "-so" "-tw" "-th"
-                         "-ti" "-tni" "-wt")
+                         "-ti" "-tni" "-wt" "-c")
     local NB_OPTIONS=${#LONG_OPTIONS[@]}
 
     local exclude_l=(2) # load-image excludes size
@@ -155,7 +148,7 @@ _easypap_completions()
                     COMPREPLY=("\"${MPIRUN_DEFAULT:-"-np 2"}\"")
                 fi
                 ;;
-            -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|-ft|--first-touch|-du|--dump|-p|--pause|-sr|--soft-rendering|-o|--ocl)
+            -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|-ft|--first-touch|-du|--dump|-p|--pause|-sr|--soft-rendering|-o|--ocl|-c|--cache)
                 # After options taking no argument, we can suggest another option
                 if [[ "$cur" =~ ^--.* ]]; then
                     _easypap_option_suggest "${LONG_OPTIONS[@]}"
@@ -197,7 +190,7 @@ _easyview_completions()
             -d|--dir)
                 #compopt -o filenames
                 if [[ -z "$cur" ]]; then
-                    COMPREPLY=($(compgen -d -- "traces/data/"))
+                    COMPREPLY=($(compgen -d -- "$TRACEDIR/"))
                 else
                     COMPREPLY=($(compgen -d -- "$cur"))
                 fi
@@ -229,7 +222,7 @@ _easyview_completions()
         esac
     done
     if [[ -z $tracedir ]]; then
-        tracedir="traces/data"
+        tracedir=${TRACEDIR}
     fi
     if [[ "$cur" =~ ^--.* ]]; then
         _easypap_option_suggest "${LONG_OPTIONS[@]}"
@@ -244,6 +237,14 @@ _easyview_completions()
         fi
     fi
 }
+
+_dir=`dirname $BASH_SOURCE`
+_dir=`dirname $_dir`
+
+. ${_dir}/script/easypap-common.bash
+. ${_dir}/script/easypap-utilities.bash
+
+unset _dir
 
 complete -F _easypap_completions ./run
 complete -F _easyview_completions ./view

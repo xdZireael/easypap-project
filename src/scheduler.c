@@ -1,7 +1,6 @@
 
 #define _GNU_SOURCE
-#include <hwloc.h>
-#include <pthread.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,14 +8,14 @@
 #include "debug.h"
 #include "global.h"
 #include "scheduler.h"
+#include "ez_pthread.h"
 
 static int nbWorkers = -1;
 
 volatile static int nbTask = 0;
-pthread_mutex_t mutex      = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond        = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t mutex      = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond        = PTHREAD_COND_INITIALIZER;
 
-static hwloc_topology_t topology;
 static unsigned nb_cores;
 
 #define WORK_QUEUE 1024
@@ -27,11 +26,10 @@ struct task
   void *p;
 };
 
-struct worker
+static struct worker
 {
   int id;
   pthread_t tid;
-  pthread_attr_t attr;
   pthread_cond_t cond;
   pthread_mutex_t mutex;
   int fin, todo;
@@ -106,13 +104,6 @@ static void *worker_main (void *p)
   struct worker *me = (struct worker *)p;
   struct task todo  = {NULL, NULL};
   unsigned tasks    = 0;
-  hwloc_obj_t obj;
-  hwloc_bitmap_t set;
-
-  obj = hwloc_get_obj_by_type (topology, HWLOC_OBJ_PU, me->id % nb_cores);
-  set = obj->cpuset;
-  // hwloc_bitmap_singlify (set);
-  hwloc_set_cpubind (topology, set, HWLOC_CPUBIND_THREAD);
 
   PRINT_DEBUG ('s', "Hey, I'm worker %d\n", me->id);
 
@@ -148,13 +139,7 @@ unsigned scheduler_init (unsigned default_P)
 {
   int i;
 
-  /* Allocate and initialize topology object. */
-  hwloc_topology_init (&topology);
-
-  /* Perform the topology detection. */
-  hwloc_topology_load (topology);
-
-  nb_cores = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_PU);
+  nb_cores = easypap_number_of_cores ();
 
   if (default_P != -1)
     nbWorkers = default_P;
@@ -173,10 +158,9 @@ unsigned scheduler_init (unsigned default_P)
     workers[i].f    = 0;
     pthread_cond_init (&workers[i].cond, NULL);
     pthread_mutex_init (&workers[i].mutex, NULL);
-    pthread_attr_init (&workers[i].attr);
 
-    pthread_create (&workers[i].tid, &workers[i].attr, worker_main,
-                    &workers[i]);
+    ez_pthread_create (&workers[i].tid, NULL, worker_main,
+                       &workers[i]);
   }
 
   return nbWorkers;
@@ -190,12 +174,9 @@ void scheduler_finalize (void)
     no_more_task (i);
 
   for (i = 0; i < nbWorkers; i++)
-    pthread_join (workers[i].tid, NULL);
+    ez_pthread_join (workers[i].tid, NULL);
 
   free (workers);
-
-  /* Destroy topology object. */
-  hwloc_topology_destroy (topology);
 
   PRINT_DEBUG ('s', "[Workers stopped]\n");
 }

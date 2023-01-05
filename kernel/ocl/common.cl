@@ -16,6 +16,7 @@ static unsigned int4_to_color (int4 i)
   return *((unsigned *) &v);
 }
 
+#ifdef X86_64_ARCH
 static float4 color_scatter (unsigned c)
 {
   uchar4 ci;
@@ -23,6 +24,16 @@ static float4 color_scatter (unsigned c)
   ci.s0123 = (*((uchar4 *) &c)).s3210;
   return convert_float4 (ci) / (float4) 255;
 }
+#else
+static float4 color_scatter (unsigned c)
+{
+  uchar4 ci;
+
+  // ci.s0123 = (*((uchar4 *) &c)).s1203; 
+  ci.s0123 = (*((uchar4 *) &c)).s2013; 
+  return convert_float4 (ci) / (float4) 255;
+}
+#endif
 
 // This is a generic version of a kernel updating the OpenGL texture buffer.
 // It should work with most of existing kernels.

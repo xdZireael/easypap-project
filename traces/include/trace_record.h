@@ -9,7 +9,7 @@ extern unsigned do_trace;
 extern unsigned trace_may_be_used;
 
 void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
-                        char *label, unsigned starting_iteration);
+                        char *label, unsigned starting_iteration, unsigned cache);
 void trace_record_declare_task_ids (char *task_ids[]);
 void trace_record_commit_task_ids (void);
 void __trace_record_start_iteration (long time);
@@ -17,7 +17,7 @@ void __trace_record_end_iteration (long time);
 void __trace_record_start_tile (long time, unsigned cpu);
 void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
                               unsigned w, unsigned h, int task_type,
-                              int task_id);
+                              int task_id, int64_t *counters);
 void trace_record_finalize (void);
 
 #define trace_record_start_iteration(t)                                        \
@@ -38,10 +38,11 @@ void trace_record_finalize (void);
       __trace_record_start_tile ((t), (c));                                    \
   } while (0)
 
-#define trace_record_end_tile(t, c, x, y, w, h, tt, tid)                       \
+#define trace_record_end_tile(t, c, x, y, w, h, tt, tid, counters)             \
   do {                                                                         \
     if (do_trace)                                                              \
-      __trace_record_end_tile ((t), (c), (x), (y), (w), (h), (tt), (tid));     \
+      __trace_record_end_tile ((t), (c), (x), (y), (w), (h), (tt), (tid),      \
+                               (counters));                                    \
   } while (0)
 
 #else
@@ -53,7 +54,7 @@ void trace_record_finalize (void);
 #define trace_record_start_iteration(t) (void)0
 #define trace_record_end_iteration(t) (void)0
 #define trace_record_start_tile(t, c) (void)0
-#define trace_record_end_tile(t, c, x, y, w, h, tt, tid) (void)0
+#define trace_record_end_tile(t, c, x, y, w, h, tt, tid, counters) (void)0
 
 #endif
 
