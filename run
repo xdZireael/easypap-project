@@ -67,7 +67,7 @@ if [[ -z $OMP_PLACES ]]; then
         export OMP_PLACES="cores"
     else # MacOS
         # OMP_PLACES is not supported by libgomp yet
-        if ! ldd ${SIMU} | grep libgomp > /dev/null; then
+        if ! otool -L ${SIMU} | grep libgomp > /dev/null; then
             export OMP_PLACES="cores"
         fi
     fi
