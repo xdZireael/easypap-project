@@ -12,7 +12,7 @@ static unsigned color = 0xFFFF00FF; // Living cells have the yellow color
 
 typedef unsigned cell_t;
 
-static cell_t *restrict _table = NULL, *restrict _alternate_table = NULL;
+static cell_t *_table = NULL, *_alternate_table = NULL;
 
 static inline cell_t *table_cell (cell_t *restrict i, int y, int x)
 {
@@ -79,12 +79,21 @@ int life_do_tile_default (int x, int y, int width, int height)
 
         for (int yloc = i - 1; yloc < i + 2; yloc++)
           for (int xloc = j - 1; xloc < j + 2; xloc++)
-            n += cur_table (yloc, xloc);
+            if (xloc != j || yloc != i)
+              n += cur_table(yloc, xloc);
 
-        n = (n == 3 + me) | (n == 3);
-        change |= (n != me);
+        if (me == 1 && n != 2 && n != 3)
+        {
+          me = 0;
+          change = 1;
+        }
+        else if (me == 0 && n == 3)
+        {
+          me = 1;
+          change = 1;
+        }
 
-        next_table (i, j) = n;
+        next_table(i, j) = me;
       }
 
   return change;
@@ -286,4 +295,40 @@ void life_draw_diehard (void)
 {
   life_rle_parse ("data/rle/diehard.rle", DIM / 2, DIM / 2,
                   RLE_ORIENTATION_NORMAL);
+}
+
+static void dump(int size, int x, int y)
+{
+  for (int i = 0; i < size; i++)
+    for (int j = 0; j < size; j++)
+      if (get_cell(i, j))
+        set_cell(i + x, j + y);
+}
+
+static void moult_rle(int size, int p, char *filepath)
+{
+  life_rle_parse(filepath, size / 2, size / 2, RLE_ORIENTATION_NORMAL);
+
+  for (int x = 0; x < DIM - size; x += size)
+    for (int y = 0; y < DIM - size; y += size)
+      if (random() % p == 0 || (x == 0 && y == 0))
+        dump(size, x, y);
+}
+
+// ./run -k life -a moultdiehard130 -s 512
+void life_draw_moultdiehard130(void)
+{
+  moult_rle(16, 2, "data/rle/diehard.rle");
+}
+
+// ./run -k life -a moultdiehard2474 -s 1024
+void life_draw_moultdiehard1398(void)
+{
+  moult_rle(52, 4, "data/rle/diehard1398.rle");
+}
+
+// ./run -k life -a moultdiehard2474 -s 2048
+void life_draw_moultdiehard2474(void)
+{
+  moult_rle(104, 2, "data/rle/diehard2474.rle");
 }
