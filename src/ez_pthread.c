@@ -128,9 +128,13 @@ static void *thread_loop (void *p)
   }
 }
 
-void ez_pthread_init (hwloc_topology_t t, unsigned ncores)
+void ez_pthread_settopo (hwloc_topology_t t)
 {
   topology = t;
+}
+
+void ez_pthread_init (unsigned ncores)
+{
   nb_cores = ncores;
   if (nb_cores > MAX_EZ_PTHREADS)
     exit_with_error ("Oh oh, current implementation does not support so many "

@@ -7,7 +7,8 @@
 
 typedef void * (*ez_pthread_func_t)(void *);
 
-void ez_pthread_init (hwloc_topology_t t, unsigned ncores);
+void ez_pthread_settopo (hwloc_topology_t t);
+void ez_pthread_init (unsigned ncores);
 void ez_pthread_finalize (void);
 
 int ez_pthread_create (pthread_t *thread, const pthread_attr_t *attr, ez_pthread_func_t f, void *arg);

@@ -283,7 +283,7 @@ static void init_phases (void)
 #endif
 #endif
 
-  ez_pthread_init (topology, nb_cores);
+  ez_pthread_settopo (topology);
 
   // Set kernel and variant
   {

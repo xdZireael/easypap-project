@@ -145,7 +145,9 @@ unsigned scheduler_init (unsigned default_P)
     nbWorkers = default_P;
   else
     nbWorkers =  easypap_requested_number_of_threads ();
-  
+
+  ez_pthread_init (nbWorkers);
+
   PRINT_DEBUG ('s', "[Starting %d workers]\n", nbWorkers);
 
   workers = malloc (nbWorkers * sizeof (struct worker));
