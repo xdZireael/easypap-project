@@ -82,8 +82,7 @@ if [[ -n $MPIRUNARGS ]]; then
     vars=(OMP_NUM_THREADS OMP_SCHEDULE OMP_PLACES)
     MPIENV=""
     for v in ${vars[@]}; do
-        eval x="\$${v}"
-        if [[ -n $x ]]; then
+        if [[ -n ${!v} ]]; then
             MPIENV="${MPIENV} -x $v"
         fi
     done
