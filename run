@@ -79,13 +79,14 @@ fi
 
 # check if program should be launched by mpirun
 if [[ -n $MPIRUNARGS ]]; then
+    vars=(OMP_NUM_THREADS OMP_SCHEDULE OMP_PLACES)
     MPIENV=""
-    if [[ -n $OMP_NUM_THREADS ]]; then
-        MPIENV="${MPIENV} -x OMP_NUM_THREADS"
-    fi
-    if [[ -n $OMP_SCHEDULE ]]; then
-        MPIENV="${MPIENV} -x OMP_SCHEDULE"
-    fi
+    for v in ${vars[@]}; do
+        eval x="\$${v}"
+        if [[ -n $x ]]; then
+            MPIENV="${MPIENV} -x $v"
+        fi
+    done
     mpirun ${MPIENV} ${MPIRUNARGS} ${SIMU} "$@"
 else
     exec ${SIMU} "$@"
