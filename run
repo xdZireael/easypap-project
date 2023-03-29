@@ -73,8 +73,11 @@ if [[ -z $OMP_PLACES ]]; then
     fi
 fi
 
-if [[ $DEBUG != no ]]; then
-    exec ${DEBUG} ${SIMU} -- "$@"
+# Run under debugger 
+if [[ $DEBUG = "lldb" ]]; then
+    exec lldb ${SIMU} -- "$@"
+elif [[ $DEBUG = "gdb" ]]; then
+    exec gdb --args ${SIMU} "$@"
 fi
 
 # check if program should be launched by mpirun

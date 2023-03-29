@@ -13,6 +13,11 @@
 #include <mpi.h>
 #endif
 
+#ifdef ENABLE_SHA
+#include <openssl/evp.h>
+#include <openssl/sha.h>
+#endif
+
 #include "constants.h"
 #include "cpustat.h"
 #include "easypap.h"
@@ -21,6 +26,9 @@
 #include "ocl.h"
 #include "perfcounter.h"
 #include "trace_record.h"
+
+#define MAX_FILENAME 1024
+#define MAX_LABEL 64
 
 int max_iter            = 0;
 unsigned refresh_rate   = -1;
@@ -35,26 +43,43 @@ char *tile_name          = NULL;
 char *draw_param         = NULL;
 char *easypap_image_file = NULL;
 
-static char *output_file = "./plots/data/perf_data.csv";
-#define MAX_LABEL 64
+static char *output_file           = "./plots/data/perf_data.csv";
 static char trace_label[MAX_LABEL] = {0};
 
-unsigned opencl_used                                       = 0;
-unsigned easypap_mpirun                                    = 0;
-static int _easypap_mpi_rank                               = 0;
-static int _easypap_mpi_size                               = 1;
-static unsigned master_do_display __attribute__ ((unused)) = 1;
-static unsigned do_pause                                   = 0;
-static unsigned quit_when_done                             = 0;
-static unsigned nb_cores                                   = 1;
-unsigned do_first_touch                                    = 0;
-static unsigned do_dump __attribute__ ((unused))           = 0;
-static unsigned do_thumbs __attribute__ ((unused))         = 0;
-static unsigned show_ocl_config                            = 0;
-static unsigned list_ocl_variants                          = 0;
-static unsigned trace_starting_iteration                   = 1;
+unsigned opencl_used                                           = 0;
+unsigned easypap_mpirun                                        = 0;
+static int _easypap_mpi_rank                                   = 0;
+static int _easypap_mpi_size                                   = 1;
+static unsigned master_do_display __attribute__ ((unused))     = 1;
+static unsigned do_pause                                       = 0;
+static unsigned quit_when_done                                 = 0;
+static unsigned nb_cores                                       = 1;
+unsigned do_first_touch                                        = 0;
+static unsigned do_dump __attribute__ ((unused))               = 0;
+static unsigned do_thumbs __attribute__ ((unused))             = 0;
+static unsigned show_ocl_config                                = 0;
+static unsigned list_ocl_variants                              = 0;
+static unsigned trace_starting_iteration                       = 1;
+static unsigned show_sha256_signature __attribute__ ((unused)) = 0;
 
 static hwloc_topology_t topology;
+
+#ifdef ENABLE_SHA
+static void build_hash (void *data, unsigned bytes, char *hash)
+{
+  int i;
+  unsigned char sha[SHA256_DIGEST_LENGTH] = {0};
+  char const alpha[]                      = "0123456789abcdef";
+
+  EVP_Digest (data, bytes, sha, NULL, EVP_sha256 (), NULL);
+
+  for (i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+    hash[2 * i]     = alpha[sha[i] >> 4];
+    hash[2 * i + 1] = alpha[sha[i] & 0xF];
+  }
+  hash[2 * i] = '\0';
+}
+#endif
 
 unsigned easypap_requested_number_of_threads (void)
 {
@@ -169,7 +194,9 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter,
   if (uname (&s) < 0)
     exit_with_error ("uname failed (%s)", strerror (errno));
 
-  fprintf (f, "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld;%" PRId64 ";%" PRId64 ";%" PRId64 ";%" PRId64 "\n",
+  fprintf (f,
+           "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld;%" PRId64 ";%" PRId64
+           ";%" PRId64 ";%" PRId64 "\n",
            s.nodename, DIM, TILE_W, TILE_H,
            easypap_requested_number_of_threads (), kernel_name, variant_name,
            tile_name, nb_iter, easypap_omp_schedule (), easypap_omp_places (),
@@ -246,6 +273,14 @@ static void check_tile_size (void)
                      DIM, NB_TILES_Y);
 }
 
+static void generate_log_name (char *dest, size_t size, const char *prefix,
+                               const char *extension, const int iterations)
+{
+  snprintf (dest, size, "%s-%s-%s-%s-dim-%d-iter-%d-arg-%s.%s", prefix,
+            kernel_name, variant_name, tile_name, DIM, iterations,
+            (draw_param ?: "none"), extension);
+}
+
 static void init_phases (void)
 {
 #ifdef ENABLE_MPI
@@ -319,12 +354,12 @@ static void init_phases (void)
 #ifdef ENABLE_MONITORING
 #ifdef ENABLE_TRACE
   if (trace_may_be_used) {
-    char filename[1024];
+    char filename[MAX_FILENAME];
 
     if (easypap_mpirun)
-      sprintf (filename, "%s/%s.%d%s", DEFAULT_EZV_TRACE_DIR,
-               DEFAULT_EZV_TRACE_BASE, easypap_mpi_rank (),
-               DEFAULT_EZV_TRACE_EXT);
+      snprintf (filename, MAX_FILENAME, "%s/%s.%d%s", DEFAULT_EZV_TRACE_DIR,
+                DEFAULT_EZV_TRACE_BASE, easypap_mpi_rank (),
+                DEFAULT_EZV_TRACE_EXT);
     else
       strcpy (filename, DEFAULT_EASYVIEW_FILE);
 
@@ -659,25 +694,56 @@ int main (int argc, char **argv)
     PRINT_MASTER ("%ld.%03ld \n", temps / 1000, temps % 1000);
   }
 
-#ifdef ENABLE_SDL
-  // Check if final image should be dumped on disk
-  if (do_dump) {
+  {
+    int refresh_done = 0;
 
-    if (the_refresh_img)
-      the_refresh_img ();
-    else if (opencl_used)
-      ocl_retrieve_data ();
+#ifdef ENABLE_SHA
+    if (show_sha256_signature) {
+      char hash[2 * SHA256_DIGEST_LENGTH + 1];
+      char filename[MAX_FILENAME];
 
-    if (easypap_proc_is_master ()) {
-      char filename[1024];
+      if (!refresh_done) {
+        if (the_refresh_img)
+          the_refresh_img ();
+        else if (opencl_used)
+          ocl_retrieve_data ();
+        refresh_done = 1;
+      }
 
-      sprintf (filename, "dump-%s-%s-%s-dim-%d-iter-%d.png", kernel_name,
-               variant_name, tile_name, DIM, iterations);
+      build_hash (image, DIM * DIM * sizeof (unsigned), hash);
+      generate_log_name (filename, MAX_FILENAME, "hash", "sha256", iterations);
 
-      graphics_dump_image_to_file (filename);
+      int fd = open (filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+      if (fd == -1)
+        exit_with_error ("Cannot create \"%s\" file (%s)", filename,
+                         strerror (errno));
+      write (fd, hash, 2 * SHA256_DIGEST_LENGTH);
+      close (fd);
+      printf ("SHA256: %s\n", hash);
     }
-  }
 #endif
+
+#ifdef ENABLE_SDL
+    // Check if final image should be dumped on disk
+    if (do_dump) {
+
+      if (!refresh_done) {
+        if (the_refresh_img)
+          the_refresh_img ();
+        else if (opencl_used)
+          ocl_retrieve_data ();
+        refresh_done = 1;
+      }
+
+      if (easypap_proc_is_master ()) {
+        char filename[MAX_FILENAME];
+
+        generate_log_name (filename, MAX_FILENAME, "dump", "png", iterations);
+        graphics_dump_image_to_file (filename);
+      }
+    }
+#endif
+  }
 
 #ifdef ENABLE_MONITORING
 #ifdef ENABLE_TRACE
@@ -706,8 +772,6 @@ int main (int argc, char **argv)
     easypap_perfcounter_finalize ();
 #endif
 #endif
-
-  ez_pthread_finalize ();
 
   return 0;
 }
@@ -751,12 +815,13 @@ static void usage (int val)
            "\t-r\t| --refresh-rate <N>\t: display only 1/Nth of images\n");
   fprintf (stderr, "\t-s\t| --size <DIM>\t\t: use image of size DIM x DIM\n");
   fprintf (stderr,
-           "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
-  fprintf (
-      stderr,
-      "\t-si\t| --show-iterations\t: display iterations in main window \n");
+           "\t-sh\t| --show-hash\t\t: display SHA256 hash of last image\n");
+  fprintf (stderr,
+           "\t-si\t| --show-iterations\t: display iterations in main window\n");
   fprintf (stderr,
            "\t-so\t| --show-ocl\t\t: display OpenCL platform and devices\n");
+  fprintf (stderr,
+           "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
   fprintf (stderr, "\t-tn\t| --thumbnails\t\t: generate thumbnails\n");
   fprintf (stderr, "\t-tni\t| --thumbnails-iter <n>\t: generate thumbnails "
                    "starting from iteration n\n");
@@ -805,6 +870,10 @@ static void filter_args (int *argc, char *argv[])
     } else if (!strcmp (*argv, "--show-iterations") || !strcmp (*argv, "-si")) {
       graphics_toggle_display_iteration_number ();
 #endif
+#ifdef ENABLE_SHA
+    } else if (!strcmp (*argv, "--show-hash") || !strcmp (*argv, "-sh")) {
+      show_sha256_signature = 1;
+#endif
     } else if (!strcmp (*argv, "--list-ocl-variants") ||
                !strcmp (*argv, "-lov")) {
       list_ocl_variants = 1;
@@ -817,7 +886,7 @@ static void filter_args (int *argc, char *argv[])
       fprintf (stderr, "Warning: cannot monitor execution when ENABLE_SDL is "
                        "not defined\n");
 #else
-      do_gmonitor              = 1;
+      do_gmonitor       = 1;
 #endif
     } else if (!strcmp (*argv, "--trace") || !strcmp (*argv, "-t")) {
 #ifndef ENABLE_TRACE
@@ -825,14 +894,16 @@ static void filter_args (int *argc, char *argv[])
           stderr,
           "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
 #else
-      trace_may_be_used        = 1;
+      trace_may_be_used = 1;
 #endif
     } else if (!strcmp (*argv, "--cache") || !strcmp (*argv, "-c")) {
 #ifndef ENABLE_PAPI
-      fprintf (stderr, "Warning: cannot retrieve cache usage counters if ENABLE_PAPI is "
-                       "not defined.\n");
+      fprintf (
+          stderr,
+          "Warning: cannot retrieve cache usage counters if ENABLE_PAPI is "
+          "not defined.\n");
 #else
-      do_cache = 1;
+      do_cache          = 1;
       int perf_event = open ("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
       if (perf_event == -1) {
         fprintf (stdout,

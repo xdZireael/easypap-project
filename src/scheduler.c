@@ -178,6 +178,8 @@ void scheduler_finalize (void)
   for (i = 0; i < nbWorkers; i++)
     ez_pthread_join (workers[i].tid, NULL);
 
+  ez_pthread_finalize ();
+  
   free (workers);
 
   PRINT_DEBUG ('s', "[Workers stopped]\n");

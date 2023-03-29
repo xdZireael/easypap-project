@@ -5,11 +5,11 @@ _easypap_completions()
     local LONG_OPTIONS=("--help" "--load-image" "--size" "--kernel" "--variant" "--monitoring" "--thumbnails"
                         "--trace" "--no-display" "--iterations" "--nb-tiles" "--tile-size" "--arg" "--first-touch"
                         "--label" "--mpirun" "--soft-rendering" "--show-ocl" "--tile-width" "--tile-height"
-                        "--trace-iter" "--thumbnails-iter" "--with-tile" "--cache")
+                        "--trace-iter" "--thumbnails-iter" "--with-tile" "--cache" "--show-hash")
     local SHORT_OPTIONS=("-h" "-l" "-s" "-k" "-v" "-m" "-tn"
                          "-t" "-n" "-i" "-nt" "-ts" "-a" "-ft"
                          "-lb" "-mpi" "-sr" "-so" "-tw" "-th"
-                         "-ti" "-tni" "-wt" "-c")
+                         "-ti" "-tni" "-wt" "-c" "-sh")
     local NB_OPTIONS=${#LONG_OPTIONS[@]}
 
     local exclude_l=(2) # load-image excludes size
@@ -148,7 +148,9 @@ _easypap_completions()
                     COMPREPLY=("\"${MPIRUN_DEFAULT:-"-np 2"}\"")
                 fi
                 ;;
-            -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|-ft|--first-touch|-du|--dump|-p|--pause|-sr|--soft-rendering|-o|--ocl|-c|--cache)
+            -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|\
+            -ft|--first-touch|-du|--dump|-p|--pause|-sr|--soft-rendering|\
+            -o|--ocl|-c|--cache|-sh|--show-hash)
                 # After options taking no argument, we can suggest another option
                 if [[ "$cur" =~ ^--.* ]]; then
                     _easypap_option_suggest "${LONG_OPTIONS[@]}"
