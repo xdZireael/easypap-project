@@ -12,6 +12,7 @@ ENABLE_MONITORING	= 1
 ENABLE_VECTO		= 1
 ENABLE_TRACE		= 1
 ENABLE_MPI			= 1
+ENABLE_SHA			= 1
 #ENABLE_PAPI			= 1
 
 ####################################
@@ -128,6 +129,12 @@ endif
 ifeq ($(ENABLE_PAPI), 1)
 CFLAGS		+= -DENABLE_PAPI
 PACKAGES	+= papi
+endif
+
+# Secure Hash Algorithm (SHA256)
+ifeq ($(ENABLE_SHA), 1)
+CFLAGS		+= -DENABLE_SHA
+PACKAGES	+= openssl
 endif
 
 # Query CFLAGS and LDLIBS for all packages
