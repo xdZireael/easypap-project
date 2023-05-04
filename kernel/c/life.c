@@ -271,6 +271,22 @@ void life_draw_stable (void)
     }
 }
 
+void life_draw_oscil (void)
+{
+  for (int i = 2; i < DIM - 4; i += 4)
+    for (int j = 2; j < DIM - 4; j += 4) {
+      if ((j - 2) % 8) {
+        set_cell (i + 1, j);
+        set_cell (i + 1, j + 1);
+        set_cell (i + 1, j + 2);
+      } else {
+        set_cell (i, j + 1);
+        set_cell (i + 1, j + 1);
+        set_cell (i + 2, j + 1);
+      }
+    }
+}
+
 void life_draw_guns (void)
 {
   at_the_four_corners ("data/rle/gun.rle", 1);
