@@ -67,7 +67,7 @@ _easypap_gpu_variants()
     fi
 
     # The most secure way of finding GPU kernels is to ask easypap…
-    tmp=`./run -k $1 -lgv`
+    tmp=$(./run -k $1 -lgv 2> /dev/null)
 
     # But the "grep into the .cl file" method is much much faster!
     #tmp=`awk '/__kernel/ {print $3}' < kernel/ocl/${k}.cl`
