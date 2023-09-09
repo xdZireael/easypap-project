@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <fcntl.h>
 #include <fut.h>
 #include <fxt-tools.h>
@@ -9,7 +10,6 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <assert.h>
 
 #include "error.h"
 #include "trace_common.h"
@@ -43,11 +43,11 @@ void trace_file_load (char *file)
 
     switch (ev.code) {
     case TRACE_BEGIN_ITER:
-      trace_data_start_iteration (&trace[nb_traces], ev.param[0]);
+      trace_data_start_iteration (&trace[nb_traces], ev.time / 1000);
       break;
 
     case TRACE_END_ITER:
-      trace_data_end_iteration (&trace[nb_traces], ev.param[0]);
+      trace_data_end_iteration (&trace[nb_traces], ev.time / 1000);
       current_iteration++;
       break;
 
@@ -72,17 +72,35 @@ void trace_file_load (char *file)
     case TRACE_END_TILE:
       if (trace[nb_traces].has_cache_data) {
         assert (ev.nb_params > 7);
-        trace_data_add_task (&trace[nb_traces], last_start_times[cpu],
-                             ev.param[0], ev.param[2], ev.param[3], ev.param[4],
-                             ev.param[5], current_iteration, cpu,
-                             TASK_EXTRACT_TTYPE (ev.param[6]),
-                             TASK_EXTRACT_TID (ev.param[6]), (int64_t *)ev.param + 7);
+        trace_data_add_task (
+            &trace[nb_traces], last_start_times[cpu], ev.param[0], ev.param[2],
+            ev.param[3], ev.param[4], ev.param[5], current_iteration, cpu,
+            INT_EXTRACT_LOW (ev.param[6]), INT_EXTRACT_HIGH (ev.param[6]),
+            (int64_t *)ev.param + 7);
       } else
         trace_data_add_task (&trace[nb_traces], last_start_times[cpu],
                              ev.param[0], ev.param[2], ev.param[3], ev.param[4],
                              ev.param[5], current_iteration, cpu,
-                             TASK_EXTRACT_TTYPE (ev.param[6]),
-                             TASK_EXTRACT_TID (ev.param[6]), NULL);
+                             INT_EXTRACT_LOW (ev.param[6]),
+                             INT_EXTRACT_HIGH (ev.param[6]), NULL);
+      break;
+
+    case TRACE_TILE:
+      if (trace[nb_traces].has_cache_data) {
+        assert (ev.nb_params > 5);
+        trace_data_add_task (
+            &trace[nb_traces], ev.param[0], ev.time / 1000,
+            INT_EXTRACT_LOW (ev.param[2]), INT_EXTRACT_HIGH (ev.param[2]),
+            INT_EXTRACT_LOW (ev.param[3]), INT_EXTRACT_HIGH (ev.param[3]),
+            current_iteration, cpu, INT_EXTRACT_LOW (ev.param[4]),
+            INT_EXTRACT_HIGH (ev.param[4]), (int64_t *)ev.param + 5);
+      } else
+        trace_data_add_task (
+            &trace[nb_traces], ev.param[0], ev.time / 1000,
+            INT_EXTRACT_LOW (ev.param[2]), INT_EXTRACT_HIGH (ev.param[2]),
+            INT_EXTRACT_LOW (ev.param[3]), INT_EXTRACT_HIGH (ev.param[3]),
+            current_iteration, cpu, INT_EXTRACT_LOW (ev.param[4]),
+            INT_EXTRACT_HIGH (ev.param[4]), NULL);
       break;
 
     case TRACE_DIM:
@@ -133,10 +151,13 @@ void trace_file_load (char *file)
 
   trace_data_no_more_data (&trace[nb_traces]);
 
-  printf (
-      "Trace #%d \"%s\" successfully opened: %d iterations on %d CPUs, %s (%s)\n",
-      nb_traces, trace[nb_traces].label, trace[nb_traces].nb_iterations,
-      trace[nb_traces].nb_cores, trace[nb_traces].has_cache_data ? "cache usage found" : "no cache data", file);
+  printf ("Trace #%d \"%s\" successfully opened: %d iterations on %d CPUs, %s "
+          "(%s)\n",
+          nb_traces, trace[nb_traces].label, trace[nb_traces].nb_iterations,
+          trace[nb_traces].nb_cores,
+          trace[nb_traces].has_cache_data ? "cache usage found"
+                                          : "no cache data",
+          file);
 
   nb_traces++;
 }

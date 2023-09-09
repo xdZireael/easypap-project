@@ -13,25 +13,56 @@ ENABLE_VECTO		= 1
 ENABLE_TRACE		= 1
 ENABLE_MPI			= 1
 ENABLE_SHA			= 1
+ENABLE_OPENCL		= 1
+#ENABLE_MIPP			= 1
+#ENABLE_CUDA			= 1
 #ENABLE_PAPI			= 1
+
+###### Customization Section #######
+
+# Compilers
+CC			:= gcc
+CXX			:= g++
+
+# Optimization level
+CFLAGS 		:= -O3 -march=native
+
+# Warnings
+CFLAGS		+= -Wall -Wno-unused-function
 
 ####################################
 
-OS_NAME			:= $(shell uname -s | tr a-z A-Z)
-ARCH			:= $(shell uname -m | tr a-z A-Z)
-CPU_MICROARCH	:= $(shell echo $(shell (gcc -march=native -Q --help=target) | grep march) | cut -d ' ' -f2)
+CFLAGS		+= -I./include -I./traces/include
+LDLIBS		+= -lm
 
-ifeq ($(ENABLE_SDL),1)
+CXXFLAGS	:= $(CFLAGS) -std=c++11
+
+OS_NAME		:= $(shell uname -s | tr a-z A-Z)
+ARCH		:= $(shell uname -m | tr a-z A-Z)
+
 SOURCES		:= $(wildcard src/*.c)
-else
-SOURCES		:= $(filter-out src/gmonitor.c src/graphics.c src/cpustat.c, $(wildcard src/*.c))
+
+ifneq ($(ENABLE_SDL), 1)
+SOURCES		:= $(filter-out src/gmonitor.c src/graphics.c src/cpustat.c, $(SOURCES))
 endif
 
 ifneq ($(ENABLE_PAPI), 1)
 SOURCES		:= $(filter-out src/perfcounter.c, $(SOURCES))
 endif
 
-KERNELS		:= $(wildcard kernel/c/*.c)
+ifneq ($(ENABLE_OPENCL), 1)
+SOURCES		:= $(filter-out src/ocl.c, $(SOURCES))
+endif
+
+ifneq ($(ENABLE_SHA), 1)
+SOURCES		:= $(filter-out src/hash.c, $(SOURCES))
+endif
+
+CUDA_SOURCE	:= $(wildcard src/*.cu)
+
+KERNELS			:= $(wildcard kernel/c/*.c)
+CXX_KERNELS	 	:= $(wildcard kernel/mipp/*.cpp)
+CUDA_KERNELS	:= $(wildcard kernel/cuda/*.cu)
 
 T_SOURCE	:= traces/src/trace_common.c
 
@@ -39,31 +70,46 @@ ifeq ($(ENABLE_TRACE), 1)
 T_SOURCE	+= traces/src/trace_record.c
 endif
 
-L_SOURCE	:= $(wildcard src/*.l)
-L_GEN		:= $(L_SOURCE:src/%.l=obj/%.c)
+L_SOURCE		:= $(wildcard src/*.l)
+L_GEN			:= $(L_SOURCE:src/%.l=obj/%.c)
 
-OBJECTS		:= $(SOURCES:src/%.c=obj/%.o)
-K_OBJECTS	:= $(KERNELS:kernel/c/%.c=obj/%.o)
-T_OBJECTS	:= $(T_SOURCE:traces/src/%.c=obj/%.o)
-L_OBJECTS	:= $(L_SOURCE:src/%.l=obj/%.o)
+OBJECTS			:= $(SOURCES:src/%.c=obj/%.o)
+K_OBJECTS		:= $(KERNELS:kernel/c/%.c=obj/%.o)
+CXX_K_OBJECTS	:= $(CXX_KERNELS:kernel/mipp/%.cpp=obj/mipp_%.o)
+T_OBJECTS		:= $(T_SOURCE:traces/src/%.c=obj/%.o)
+L_OBJECTS		:= $(L_SOURCE:src/%.l=obj/%.o)
+CUDA_OBJECTS	:= $(CUDA_SOURCE:src/%.cu=obj/%.o)
+CUDA_K_OBJECTS	:= $(CUDA_KERNELS:kernel/cuda/%.cu=obj/cuda_%.o)
 
 ALL_OBJECTS	:= $(OBJECTS) $(K_OBJECTS) $(T_OBJECTS) $(L_OBJECTS)
 
-DEPENDS		:= $(SOURCES:src/%.c=deps/%.d)
-K_DEPENDS	:= $(KERNELS:kernel/c/%.c=deps/%.d)
-T_DEPENDS	:= $(T_SOURCE:traces/src/%.c=deps/%.d)
-L_DEPENDS	:= $(L_GEN:obj/%.c=deps/%.d)
+ifeq ($(ENABLE_CUDA), 1)
+ALL_OBJECTS	+= $(CUDA_OBJECTS) $(CUDA_K_OBJECTS)
+endif
+
+ifeq ($(ENABLE_MIPP), 1)
+ALL_OBJECTS	+= $(CXX_K_OBJECTS)
+endif
+
+DEPENDS			:= $(SOURCES:src/%.c=deps/%.d)
+K_DEPENDS		:= $(KERNELS:kernel/c/%.c=deps/%.d)
+CXX_K_DEPENDS	:= $(CXX_KERNELS:kernel/mipp/%.cpp=deps/mipp_%.d)
+T_DEPENDS		:= $(T_SOURCE:traces/src/%.c=deps/%.d)
+L_DEPENDS		:= $(L_GEN:obj/%.c=deps/%.d)
+CUDA_DEPENDS	:= $(CUDA_SOURCE:src/%.cu=deps/%.d)
+CUDA_K_DEPENDS	:= $(CUDA_KERNELS:kernel/cuda/%.cu=deps/cuda_%.d)
 
 ALL_DEPENDS := $(DEPENDS) $(K_DEPENDS) $(T_DEPENDS) $(L_DEPENDS)
 
+ifeq ($(ENABLE_CUDA), 1)
+ALL_DEPENDS	+= $(CUDA_DEPENDS) $(CUDA_K_DEPENDS)
+endif
+
+ifeq ($(ENABLE_MIPP), 1)
+ALL_DEPENDS	+= $(CXX_K_DEPENDS)
+endif
+
 MAKEFILES	:= Makefile
-
-CC			:= gcc
-#CC			:= clang
-
-CFLAGS 		+= -O3 -march=native -Wall -Wno-unused-function -DARCH=$(ARCH)
-CFLAGS		+= -I./include -I./traces/include
-LDLIBS		+= -lm
 
 ifeq ($(OS_NAME), DARWIN)
 LDLIBS		+= -framework OpenGL
@@ -83,31 +129,24 @@ ifeq ($(ENABLE_MONITORING), 1)
 CFLAGS		+= -DENABLE_MONITORING
 endif
 
-ifeq ($(ENABLE_PAPI), 1)
-ifeq ($(CPU_MICROARCH), $(filter $(CPU_MICROARCH),skylake-avx512 cascadelake))
-CFLAGS 		+= -DMICROARCH_SKYLAKE
-else
-ifeq ($(CPU_MICROARCH), haswell)
-CFLAGS 		+= -DMICROARCH_HASWELL
-endif
-endif
-endif
-
 # OpenMP
 CFLAGS		+= -fopenmp
 LDFLAGS		+= -fopenmp
 
 # OpenCL
-CFLAGS		+= -DCL_SILENCE_DEPRECATION
+ifeq ($(ENABLE_OPENCL), 1)
+CFLAGS		+= -DENABLE_OPENCL -DCL_SILENCE_DEPRECATION -DARCH=$(ARCH)_ARCH
 ifeq ($(OS_NAME), DARWIN)
 LDLIBS		+= -framework OpenCL
 else
 LDLIBS		+= -lOpenCL
 endif
+endif
 
-# Hardware Locality
+# Hardware Locality (hwloc)
 PACKAGES	:= hwloc
 
+# Simple DirectMedia Layer (SDL)
 ifeq ($(ENABLE_SDL), 1)
 CFLAGS		+= -DENABLE_SDL
 PACKAGES	+= SDL2_image SDL2_ttf
@@ -119,39 +158,71 @@ CFLAGS		+= -DENABLE_TRACE -DENABLE_FUT
 PACKAGES	+= fxt
 endif
 
-# MPI
+# Message Passing Interface (MPI)
 ifeq ($(ENABLE_MPI), 1)
 CFLAGS		+= -DENABLE_MPI
 PACKAGES	+= ompi
 endif
 
-# PAPI
+# Performance Application Programming Interface (PAPI)
 ifeq ($(ENABLE_PAPI), 1)
 CFLAGS		+= -DENABLE_PAPI
+MICROARCH	:= $(shell echo $(shell (gcc -march=native -Q --help=target) | grep -m 1 march) | cut -d ' ' -f2)
+ifeq ($(MICROARCH), $(filter $(MICROARCH),skylake skylake-avx512 cascadelake))
+CFLAGS 		+= -DMICROARCH_SKYLAKE
+else
+ifeq ($(MICROARCH), haswell)
+CFLAGS 		+= -DMICROARCH_HASWELL
+endif
+endif
 PACKAGES	+= papi
 endif
 
-# Secure Hash Algorithm (SHA256)
+# Secure Hash Algorithm (SHA)
 ifeq ($(ENABLE_SHA), 1)
 CFLAGS		+= -DENABLE_SHA
 PACKAGES	+= openssl
 endif
 
+# Compute Unified Device Architecture (CUDA)
+ifeq ($(ENABLE_CUDA), 1)
+CFLAGS		+= -DENABLE_CUDA
+LDLIBS		+= -lcudart
+PACKAGES	+= cuda
+CUDA_CFLAGS := -O3 -I./include -I./traces/include
+endif
+
+# MyIntrinsics++ (MIPP)
+ifeq ($(ENABLE_MIPP), 1)
+CXXFLAGS	+= -I./lib/mipp/src
+endif
+
 # Query CFLAGS and LDLIBS for all packages
+PKG_CHECK	:= $(shell if pkg-config --print-errors --exists $(PACKAGES); then echo 0; else echo 1; fi)
+ifeq ($(PKG_CHECK), 1)
+$(error Installation problem: missing package)
+endif
+
 CFLAGS		+= $(shell pkg-config --cflags $(PACKAGES))
 LDFLAGS		+= $(shell pkg-config --libs-only-L $(PACKAGES))
 LDLIBS		+= $(shell pkg-config --libs-only-l $(PACKAGES))
 
+
 $(ALL_OBJECTS): $(MAKEFILES)
 
 $(PROGRAM): $(ALL_OBJECTS)
-	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	$(CXX) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 $(OBJECTS): obj/%.o: src/%.c
 	$(CC) -o $@ $(CFLAGS) -c $<
 
 $(K_OBJECTS): obj/%.o: kernel/c/%.c
 	$(CC) -o $@ $(CFLAGS) -c $<
+
+ifeq ($(ENABLE_MIPP), 1)
+$(CXX_K_OBJECTS): obj/mipp_%.o: kernel/mipp/%.cpp
+	$(CXX) -o $@ $(CXXFLAGS) -c $<
+endif
 
 $(T_OBJECTS): obj/%.o: traces/src/%.c
 	$(CC) -o $@ $(CFLAGS) -c $<
@@ -162,26 +233,43 @@ $(L_OBJECTS): obj/%.o: obj/%.c
 $(L_GEN): obj/%.c: src/%.l
 	$(LEX) -t $< > $@
 
+ifeq ($(ENABLE_CUDA), 1)
+$(CUDA_OBJECTS): obj/%.o: src/%.cu
+	nvcc -o $@ $(CUDA_CFLAGS) -c $<
+
+$(CUDA_K_OBJECTS): obj/cuda_%.o: kernel/cuda/%.cu
+	nvcc -o $@ $(CUDA_CFLAGS) -c $<
+endif
+
 .PHONY: depend
 depend: $(ALL_DEPENDS)
 
 $(ALL_DEPENDS): $(MAKEFILES)
 
 $(DEPENDS): deps/%.d: src/%.c
-	$(CC) $(CFLAGS) -MM $< | \
-		sed -e 's|\(.*\)\.o:|deps/\1.d obj/\1.o:|g' > $@
+	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
 
 $(K_DEPENDS): deps/%.d: kernel/c/%.c
-	$(CC) $(CFLAGS) -MM $< | \
-		sed -e 's|\(.*\)\.o:|deps/\1.d obj/\1.o:|g' > $@
+	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
+
+ifeq ($(ENABLE_MIPP), 1)
+$(CXX_K_DEPENDS): deps/mipp_%.d: kernel/mipp/%.cpp
+	$(CXX) $(CXXFLAGS) -MM -MT "deps/mipp_$*.d obj/mipp_$*.o" $< > $@
+endif
 
 $(T_DEPENDS): deps/%.d: traces/src/%.c
-	$(CC) $(CFLAGS) -MM $< | \
-		sed -e 's|\(.*\)\.o:|deps/\1.d obj/\1.o:|g' > $@
+	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
 
 $(L_DEPENDS): deps/%.d: obj/%.c
-	$(CC) $(CFLAGS) -MM $< | \
-		sed -e 's|\(.*\)\.o:|deps/\1.d obj/\1.o:|g' > $@
+	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
+
+ifeq ($(ENABLE_CUDA), 1)
+$(CUDA_DEPENDS): deps/%.d: src/%.cu
+	nvcc $(CUDA_CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
+
+$(CUDA_K_DEPENDS): deps/cuda_%.d: kernel/cuda/%.cu
+	nvcc $(CUDA_CFLAGS) -MM -MT "deps/cuda_$*.d obj/cuda_$*.o" $< > $@
+endif
 
 ifneq ($(MAKECMDGOALS),clean)
 -include $(ALL_DEPENDS)
@@ -189,4 +277,4 @@ endif
 
 .PHONY: clean
 clean: 
-	rm -f $(PROGRAM) obj/* deps/* lib/*
+	rm -f $(PROGRAM) obj/* deps/*

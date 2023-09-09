@@ -28,7 +28,7 @@ void ocl_send_data (void);
 void ocl_retrieve_data (void);
 unsigned ocl_invoke_kernel_generic (unsigned nb_iter);
 void ocl_update_texture (void);
-unsigned easypap_number_of_gpus (void);
+unsigned easypap_number_of_gpus_ocl (void);
 size_t ocl_get_max_workgroup_size (void);
 
 #define check(err, format, ...)                                                \
@@ -38,17 +38,15 @@ size_t ocl_get_max_workgroup_size (void);
   } while (0)
 
 // Kernels get executed by GPU_SIZE_Y * GPU_SIZE_X threads
-// Tiles have a size of GPU_TILE_H * GPU_TILE_W
-extern unsigned GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, GPU_TILE_W;
+extern unsigned GPU_SIZE_X, GPU_SIZE_Y;
 
 extern cl_context context;
 extern cl_program program;
 extern cl_kernel compute_kernel;
 extern cl_command_queue queue;
 extern cl_mem cur_buffer, next_buffer;
-extern long _calibration_delta;
 
-long ocl_monitor (cl_event evt, int x, int y, int width, int height,
+int64_t ocl_monitor (cl_event evt, int x, int y, int width, int height,
                   task_type_t task_type);
 
 #endif

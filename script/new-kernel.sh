@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+_script_dir=$(dirname $BASH_SOURCE)
+EASYPAPDIR=${EASYPAPDIR:-$(realpath ${_script_dir}/..)}
+. ${_script_dir}/easypap-common.bash
+unset _script_dir
+
 usage()
 {
     echo "Usage: $PROGNAME <kernel name>"
@@ -22,10 +27,6 @@ shall_we_continue()
     exit 1
 }
 
-EASYPAPDIR=${EASYPAPDIR:-.}
-
-. ${EASYPAPDIR}/script/easypap-common.bash
-
 PROGNAME=$0
 
 while [[ $# -ge 1 ]]; do
@@ -43,14 +44,12 @@ done
 [[ $# == 1 ]] || usage 1
 
 KERNEL="$1"
-CFILE=kernel/c/${KERNEL}.c
+CFILE=${EASYPAPDIR}/kernel/c/${KERNEL}.c
 
 if [[ -f $CFILE ]]; then
     shall_we_continue "File $CFILE will be erased"
 fi
-
-sed -e "s/<template>/$KERNEL/g" < data/templates/kernel_template.c > $CFILE
-
-echo "Template file $CFILE generated."
+ 
+sed -e "s/<template>/$KERNEL/g" < ${EASYPAPDIR}/data/templates/kernel_template.c > $CFILE && echo "Template file $CFILE generated."
 
 exit 0

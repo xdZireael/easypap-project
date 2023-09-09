@@ -148,7 +148,7 @@ void life_draw_guns (void);
 static inline void set_cell (int y, int x)
 {
   cur_table (y, x) = 1;
-  if (opencl_used)
+  if (gpu_used)
     cur_img (y, x) = 1;
 }
 

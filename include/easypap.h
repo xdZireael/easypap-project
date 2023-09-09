@@ -10,7 +10,7 @@
 #include "debug.h"
 #include "error.h"
 #include "monitoring.h"
-#include "ocl.h"
+#include "gpu.h"
 #include "ez_pthread.h"
 #include "pthread_barrier.h"
 #include "scheduler.h"

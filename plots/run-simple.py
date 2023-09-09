@@ -9,7 +9,7 @@ options = {}
 options["--label "] = ["final"]
 options["-k "] = ["mandel"]
 options["-i "] = [10]
-options["-of "] = ["./plots/data/perf_data.csv"]
+options["-of "] = ["./data/perf/data.csv"]
 options["-s "] = [1024]
 
 ompenv = {}

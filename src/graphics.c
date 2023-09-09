@@ -8,8 +8,8 @@
 #include "hooks.h"
 #include "img_data.h"
 #include "minmax.h"
-#include "ocl.h"
 #include "time_macros.h"
+#include "gpu.h"
 
 #include <SDL_image.h>
 #include <SDL_opengl.h>
@@ -154,9 +154,9 @@ static void graphics_preload_surface (char *filename)
     exit_with_error ("IMG_Load (\"%s\") failed (%s)", filename,
                      SDL_GetError ());
 
-  size = min (temporary_surface->w, temporary_surface->h);
+  size = MIN (temporary_surface->w, temporary_surface->h);
   if (DIM)
-    DIM = min (DIM, size);
+    DIM = MIN (DIM, size);
   else
     DIM = size;
 }
@@ -228,7 +228,7 @@ void graphics_init (void)
       SDL_GetRenderDriverInfo (d, &info);
       PRINT_DEBUG ('g', "Available Renderer %d: [%s]\n", d, info.name);
 #ifdef __APPLE__
-      if (opencl_used && !strcmp (info.name, "opengl"))
+      if (gpu_used && !strcmp (info.name, "opengl"))
         choosen_renderer = d;
 #endif
     }
@@ -350,7 +350,9 @@ void graphics_share_texture_buffers (void)
 
   glGetIntegerv (GL_TEXTURE_BINDING_2D, (GLint *)&texid);
 
-  ocl_map_textures (texid);
+  if (gpu_used)
+    gpu_map_textures(texid);
+
 }
 
 void graphics_render_image (void)
@@ -358,11 +360,9 @@ void graphics_render_image (void)
   SDL_Rect src, dst;
 
   // Refresh texture
-  if (opencl_used) {
-
+  if (gpu_used) {
     glFinish ();
-    ocl_update_texture ();
-
+    gpu_update_texture ();
   } else
     SDL_UpdateTexture (texture, NULL, image, DIM * sizeof (Uint32));
 
@@ -411,6 +411,8 @@ void graphics_dump_image_to_file (char *filename)
   if (r != 0)
     exit_with_error ("IMG_SavePNG (\"%s\") failed (%s)", filename,
                      SDL_GetError ());
+
+  printf ("Image dumped to %s\n", filename);
 }
 
 void graphics_save_thumbnail (unsigned iteration)
@@ -419,7 +421,7 @@ void graphics_save_thumbnail (unsigned iteration)
 
   SDL_Surface *s = more_recent_surface ();
 
-  sprintf (filename, "./traces/data/thumb_%04d.png", iteration);
+  sprintf (filename, "%s/thumb_%04d.png", DEFAULT_EZV_TRACE_DIR, iteration);
 
   SDL_FillRect (mini_surface, NULL, 0);
 

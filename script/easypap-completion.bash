@@ -4,12 +4,12 @@ _easypap_completions()
 {
     local LONG_OPTIONS=("--help" "--load-image" "--size" "--kernel" "--variant" "--monitoring" "--thumbnails"
                         "--trace" "--no-display" "--iterations" "--nb-tiles" "--tile-size" "--arg" "--first-touch"
-                        "--label" "--mpirun" "--soft-rendering" "--show-ocl" "--tile-width" "--tile-height"
-                        "--trace-iter" "--thumbnails-iter" "--with-tile" "--cache" "--show-hash")
+                        "--label" "--mpirun" "--soft-rendering" "--show-devices" "--tile-width" "--tile-height"
+                        "--trace-iter" "--thumbnails-iter" "--with-tile" "--counters" "--show-hash" "--gpu")
     local SHORT_OPTIONS=("-h" "-l" "-s" "-k" "-v" "-m" "-tn"
                          "-t" "-n" "-i" "-nt" "-ts" "-a" "-ft"
-                         "-lb" "-mpi" "-sr" "-so" "-tw" "-th"
-                         "-ti" "-tni" "-wt" "-c" "-sh")
+                         "-lb" "-mpi" "-sr" "-sd" "-tw" "-th"
+                         "-ti" "-tni" "-wt" "-c" "-sh" "-g")
     local NB_OPTIONS=${#LONG_OPTIONS[@]}
 
     local exclude_l=(2) # load-image excludes size
@@ -25,7 +25,7 @@ _easypap_completions()
     local exclude_ti=(5 6 7 21) # trace-iter excludes monitoring, trace, thumbnails and thumbnails-iter
     local exclude_tni=(6 7 20) # thumbnails-iter excludes thumbnails, trace and trace-iter
     local only_in_first_place_h=1 # --help should only be suggested as the very first argument position
-    local only_in_first_place_so=1 # --show-ocl should only be suggested as the very first argument position
+    local only_in_first_place_sd=1 # --show-devices should only be suggested as the very first argument position
 
     local i cur=${COMP_WORDS[COMP_CWORD]}
 
@@ -117,7 +117,7 @@ _easypap_completions()
                 ;;
             -v|--variant)
                 local k=
-                local ocl=
+                local gpu=
                 # search for kernel name
                 for (( i=1; i < COMP_CWORD; i++ )); do
                     case ${COMP_WORDS[i]} in
@@ -126,21 +126,21 @@ _easypap_completions()
                                 k=${COMP_WORDS[i+1]}
                             fi
                             ;;
-                        -o|--ocl)
-                            ocl=1
+                        -g|--gpu)
+                            gpu=1
                             ;;
                         *)
                             ;;
                     esac
                 done
-                if [[ -z $ocl ]]; then
+                if [[ -z $gpu ]]; then
                     # CPU variants (note: will use 'none' if $k is empty)
                     _easypap_variants $k
                     COMPREPLY=($(compgen -W "$variants" -- $cur))
                 else
-                    # OpenCL variants (note: will use 'none' if $k is empty)
-                     _easypap_ocl_variants $k
-                     COMPREPLY=($(compgen -W "$ovariants" -- $cur))
+                    # GPU variants (note: will use 'none' if $k is empty)
+                     _easypap_gpu_variants $k
+                     COMPREPLY=($(compgen -W "$gvariants" -- $cur))
                 fi
                 ;;
             -mpi|--mpirun)
@@ -150,7 +150,7 @@ _easypap_completions()
                 ;;
             -n|--no-display|-m|--monitoring|-t|--trace|-th|--thumbs|\
             -ft|--first-touch|-du|--dump|-p|--pause|-sr|--soft-rendering|\
-            -o|--ocl|-c|--cache|-sh|--show-hash)
+            -g|--gpu|-c|--cache|-sh|--show-hash)
                 # After options taking no argument, we can suggest another option
                 if [[ "$cur" =~ ^--.* ]]; then
                     _easypap_option_suggest "${LONG_OPTIONS[@]}"
@@ -240,13 +240,9 @@ _easyview_completions()
     fi
 }
 
-_dir=`dirname $BASH_SOURCE`
-_dir=`dirname $_dir`
-
-. ${_dir}/script/easypap-common.bash
-. ${_dir}/script/easypap-utilities.bash
-
-unset _dir
+_script_dir=$(dirname $BASH_SOURCE)
+. ${_script_dir}/easypap-utilities.bash
+unset _script_dir
 
 complete -F _easypap_completions ./run
 complete -F _easyview_completions ./view

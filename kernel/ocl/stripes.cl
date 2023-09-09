@@ -59,7 +59,7 @@ __kernel void stripes_ocl (__global unsigned *in, __global unsigned *out)
 // We assume that GPU_TILE_W is an even multiple of 32 (64, 128, 192, ...)
 __kernel void stripes_ocl_opt (__global unsigned *in, __global unsigned *out)
 {
-  __local unsigned tile [GPU_TILE_H][GPU_TILE_W];
+  __local unsigned tile [TILE_H][TILE_W];
   unsigned y = get_global_id (1), yloc = get_local_id (1);
   unsigned x = get_global_id (0), xloc = get_local_id (0);
   unsigned index = 2 * xloc;

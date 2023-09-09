@@ -6,8 +6,9 @@
 #include "error.h"
 #include "global.h"
 #include "img_data.h"
+#include "cppdefs.h"
 
-uint32_t *restrict image = NULL, *restrict alt_image = NULL;
+uint32_t *RESTRICT image = NULL, *RESTRICT alt_image = NULL;
 
 unsigned DIM = 0;
 

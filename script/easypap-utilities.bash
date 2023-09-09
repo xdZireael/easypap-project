@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+_script_dir=$(dirname $BASH_SOURCE)
+EASYPAPDIR=${EASYPAPDIR:-$(realpath ${_script_dir}/..)}
+. ${_script_dir}/easypap-common.bash
+unset _script_dir
+
 # result placed in kernels
 _easypap_kernels()
 {
@@ -23,43 +28,46 @@ _easypap_kernels()
 # result placed in variants
 _easypap_variants()
 {
-    local f tmp
+    local f p file tmp obj
 
     variants=
+    obj=
 
     if (( $# == 0 )); then
         set none
     fi
 
-    # Check if easypap is compiled
-    if [ ! -f obj/$1.o ]; then
+    for p in "${KERNEL_PREFIX[@]}" ; do
+        file=obj/$p$1.o
+        if [ -f $file ]; then
+            obj="$obj $file"
+        fi
+    done
+
+    if [[ -z $obj ]]; then
         return
     fi
 
-    tmp=`nm obj/$1.o | awk '/ +_?'"$1"'_compute_[^.]*$/ {print $3}'`
+    tmp=`nm $obj | awk '/ +_?'"$1"'_compute_[^.]*$/ {print $3}'`
 
     for f in $tmp; do
         variants="$variants ${f#*_compute_}"
     done
 }
 
-# result placed in ovariants
-_easypap_ocl_variants()
+# result placed in gvariants
+_easypap_gpu_variants()
 {
     local f tmp k
 
-    ovariants=
+    gvariants=
 
     if (( $# == 0 )); then
         set none
     fi
 
-    if [[ ! -f kernel/ocl/$1.cl ]]; then
-        return
-    fi
-
-    # The most secure way of finding OpenCL kernels is to compile the .cl file
-    tmp=`./run -k $1 -lov`
+    # The most secure way of finding GPU kernels is to ask easypap…
+    tmp=`./run -k $1 -lgv`
 
     # But the "grep into the .cl file" method is much much faster!
     #tmp=`awk '/__kernel/ {print $3}' < kernel/ocl/${k}.cl`
@@ -68,27 +76,34 @@ _easypap_ocl_variants()
         if [[ $f =~ .*update_texture$ || $f =~ bench_kernel ]]; then
             continue
         fi
-        ovariants="$ovariants ${f#$1_}"
+        gvariants="$gvariants ${f#$1_}"
     done
 }
 
 # result placed in draw_funcs
 _easypap_draw_funcs()
 {
-    local f tmp
+    local f p file tmp obj
 
     draw_funcs=
+    obj=
 
     if (( $# == 0 )); then
         set none
     fi
 
-    # Check if easypap is compiled
-    if [ ! -f obj/$1.o ]; then
+    for p in "" "mipp_" "cuda_" ; do
+        file=obj/$p$1.o
+        if [ -f $file ]; then
+            obj="$obj $file"
+        fi
+    done
+
+    if [[ -z $obj ]]; then
         return
     fi
 
-    tmp=`nm obj/$1.o | awk '/ +_?'"$1"'_draw_[^.]*$/ {print $3}'`
+    tmp=`nm $obj | awk '/ +_?'"$1"'_draw_[^.]*$/ {print $3}'`
 
     for f in $tmp; do
         draw_funcs="$draw_funcs ${f#*_draw_}"
@@ -98,20 +113,27 @@ _easypap_draw_funcs()
 # result placed in tile_funcs
 _easypap_tile_funcs()
 {
-    local f tmp
+    local f p file tmp obj
 
     tile_funcs=
+    obj=
 
     if (( $# == 0 )); then
         set none
     fi
 
-    # Check if easypap is compiled
-    if [ ! -f obj/$1.o ]; then
+    for p in "" "mipp_" "cuda_" ; do
+        file=obj/$p$1.o
+        if [ -f $file ]; then
+            obj="$obj $file"
+        fi
+    done
+
+    if [[ -z $obj ]]; then
         return
     fi
 
-    tmp=`nm obj/$1.o | awk '/ +_?'"$1"'_do_tile_[^.]*$/ {print $3}'`
+    tmp=`nm $obj | awk '/ +_?'"$1"'_do_tile_[^.]*$/ {print $3}'`
 
     for f in $tmp; do
         tile_funcs="$tile_funcs ${f#*_do_tile_}"

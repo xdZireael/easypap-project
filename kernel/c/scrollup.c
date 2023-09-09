@@ -59,6 +59,7 @@ unsigned scrollup_compute_tiled (unsigned nb_iter)
   return 0;
 }
 
+#ifdef ENABLE_OPENCL
 
 //////////// OpenCL version using mask (ocl_ouf)
 // Suggested cmdlines:
@@ -142,10 +143,10 @@ void scrollup_draw_ocl_ouf (char *param)
 unsigned scrollup_invoke_ocl_ouf (unsigned nb_iter)
 {
   size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y}; // global domain size for our calculation
-  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H}; // local domain size for our calculation
+  size_t local[2]  = {TILE_W, TILE_H}; // local domain size for our calculation
   cl_int err;
 
-  monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
+  uint64_t clock = monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
 
   for (unsigned it = 1; it <= nb_iter; it++) {
     unsigned color = 0xFF0000FF;
@@ -173,7 +174,9 @@ unsigned scrollup_invoke_ocl_ouf (unsigned nb_iter)
 
   clFinish (queue);
 
-  monitoring_end_tile (0, 0, DIM, DIM, easypap_gpu_lane (TASK_TYPE_COMPUTE));
+  monitoring_end_tile (clock, 0, 0, DIM, DIM, easypap_gpu_lane (TASK_TYPE_COMPUTE));
 
   return 0;
 }
+
+#endif

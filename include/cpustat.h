@@ -20,8 +20,6 @@ void cpustat_freeze (long now);
 void cpustat_display_stats (void);
 void cpustat_clean (void);
 
-int cpustat_tile (int who);
-
 #endif
 
 #endif

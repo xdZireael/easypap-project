@@ -14,7 +14,7 @@ options["-g "] = [4, 8, 16, 32]
 options["-a "] = ["random"]
 
 # Pour renseigner l'option '-of' il faut donner le chemin depuis le fichier easypap
-options["-of "] = ["./plots/data/perf_data.csv"]
+options["-of "] = ["./data/perf/data.csv"]
 
 
 # Dictionnaire avec les options OMP

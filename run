@@ -2,10 +2,10 @@
 
 ARCH=`uname -s`
 
-EASYPAPDIR=${EASYPAPDIR:-.}
-
-# source common vars
-. ${EASYPAPDIR}/script/easypap-common.bash
+_main_dir=$(dirname $BASH_SOURCE)
+EASYPAPDIR=${EASYPAPDIR:-${_main_dir}}
+. ${_main_dir}/script/easypap-common.bash
+unset _main_dir
 
 TRACE=no
 THUMBS=no
@@ -21,11 +21,11 @@ for ((i = 1; i <= $#; i++ )); do
             ;;
         -lk|--list-kernels)
             shift
-            exec $EASYPAPDIR/script/easypap-list-kernels "$@"
+            exec ${EASYPAPDIR}/script/easypap-list-kernels "$@"
             ;;
         -lv|--list-variants)
             shift
-            exec $EASYPAPDIR/script/easypap-list-variants "$@"
+            exec ${EASYPAPDIR}/script/easypap-list-variants "$@"
             ;;
         -mpi|--mpirun)
             if ((i == $#)); then

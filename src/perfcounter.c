@@ -10,28 +10,27 @@
 
 #ifdef ENABLE_PAPI
 
-unsigned do_cache          = 0;
+unsigned do_cache = 0;
 
 #ifdef MICROARCH_HASWELL
 static perf_event event_list[] = {
-    {.is_native = true, .name = "MEM_LOAD_UOPS_RETIRED:L2_HIT"}, // L2_HIT
-    {.is_native = true, .name = "LONGEST_LAT_CACHE:MISS"},       // L3_MISS
-    {.is_native = true,
-     .name      = "MEM_LOAD_UOPS_LLC_HIT_RETIRED:XSNP_NONE"},        // L3_HIT
-    {.is_native = true, .name = "MEM_UOPS_RETIRED:ALL_LOADS"}}; // TOTAL
-size_t n_events = sizeof (event_list) / sizeof (perf_event);
+    {.is_native = true, .name = "CPU_CLK_UNHALTED.THREAD_P"},       // TOTAL_CYCLES
+    {.is_native = true, .name = "RESOURCE_STALLS.ANY"}              // TOTAL_STALLS
+};
+
 #else
 #ifdef MICROARCH_SKYLAKE
 static perf_event event_list[] = {
-    {.is_native = true, .name = "MEM_LOAD_UOPS_RETIRED:L2_HIT"},  // L2_HIT
-    {.is_native = true, .name = "MEM_LOAD_UOPS_RETIRED:L3_MISS"}, // L3_MISS
-    {.is_native = true, .name = "MEM_LOAD_UOPS_RETIRED:L3_HIT"},  // L3_HIT
-    {.is_native = true, .name = "MEM_INST_RETIRED:ALL_LOADS"}};   // TOTAL
-size_t n_events = sizeof (event_list) / sizeof (perf_event);
+    {.is_native = true, .name = "CPU_CLK_UNHALTED.THREAD_P"},       // TOTAL_CYCLES
+    {.is_native = true, .name = "RESOURCE_STALLS.ANY"}              // TOTAL_STALLS
+};
+
 #else
 #error Cache monitoring not available for this microarchitecture.
 #endif
 #endif
+
+size_t n_events = sizeof (event_list) / sizeof (perf_event);
 
 typedef struct
 {
@@ -126,30 +125,62 @@ void easypap_perfcounter_monitor_start_tile (unsigned cpu)
 // Stop PAPI monitoring on this cpu
 void easypap_perfcounter_monitor_stop_tile (unsigned cpu)
 {
-  int retval;
-  if ((retval = PAPI_stop (counters[cpu].eventSet, counters[cpu].counter)) !=
-      PAPI_OK)
-    ERROR_RETURN (retval);
-  for (unsigned c = 0; c < EASYPAP_NB_COUNTERS; c++) {
-    counters[cpu].total_counter[c] += counters[cpu].counter[c];
-  }
-}
+  if (do_trace){
+    int retval;
+    if ((retval = PAPI_stop (counters[cpu].eventSet, counters[cpu].counter)) != PAPI_OK)
+      ERROR_RETURN (retval);
 
-void easypap_perfcounter_monitor_start_iteration ()
-{
-  // Reset the counters values.
-  for (int cpu = 0; cpu < nb_cpu; cpu++) {
-    for (int c = 0; c < EASYPAP_NB_COUNTERS; c++) {
-      counters[cpu].counter[c] = 0;
+    for (unsigned c = 0; c < EASYPAP_NB_COUNTERS; c++) {
+      counters[cpu].total_counter[c] += counters[cpu].counter[c];
+      if (counters[cpu].total_counter[c] < 0 || counters[cpu].counter[c] < 0){
+        printf("OVERFLOW/NEGATIVE counter %s\n", event_list[c].name);
+        exit(1);
+      }
+
     }
   }
 }
 
+// nothing
+void easypap_perfcounter_monitor_start_iteration ()
+{
+  // nothing
+}
+
 void easypap_perfcounter_monitor_stop_iteration ()
 {
-  // Cette fonction ne sert à rien pour le moment.
-  // On pourrait vérifier que les compteurs de toutes les tuiles soient bien
-  // stoppés avec PAPI_state.
+  if (!do_trace)
+    easypap_perfcounter_monitor_stop_all();
+}
+
+void easypap_perfcounter_monitor_stop_all()
+{
+#pragma omp parallel // for that it's the same thread that started the monitoring that stops it
+  {
+    int retval, status = 0;
+
+    int thread = omp_get_thread_num();
+
+    if (counters[thread].eventSet != PAPI_NULL){
+
+      if ((retval = PAPI_state(counters[thread].eventSet, &status)) != PAPI_OK)
+        ERROR_RETURN(retval);
+
+      if (status == PAPI_RUNNING) {
+
+        if ((retval = PAPI_stop(counters[thread].eventSet, counters[thread].counter)) != PAPI_OK)
+          ERROR_RETURN(retval);
+
+        for (unsigned c = 0; c < EASYPAP_NB_COUNTERS; c++) {
+          counters[thread].total_counter[c] += counters[thread].counter[c];
+          if (counters[thread].total_counter[c] < 0 || counters[thread].counter[c] < 0) {
+            printf("OVERFLOW/NEGATIVE counter %s\n", event_list[c].name);
+            exit(1);
+          }
+        }
+      }
+    }
+  }
 }
 
 int64_t easypap_perfcounter_get_counter (unsigned cpu,

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-EASYPAPDIR=${EASYPAPDIR:-.}
-
-. ${EASYPAPDIR}/script/easypap-utilities.bash
+_script_dir=$(dirname $BASH_SOURCE)
+EASYPAPDIR=${EASYPAPDIR:-$(realpath ${_script_dir}/..)}
+. ${_script_dir}/easypap-utilities.bash
+unset _script_dir
 
 if [ $# != 1 ]; then
     echo "Usage: easypap-list-variants <kernel>"

@@ -10,7 +10,7 @@
 // on the top-left pixel (i.e. we do not compute the average color).
 __kernel void pixelize_ocl (__global unsigned *in)
 {
-  __local unsigned couleur [GPU_TILE_H / PIX_BLOC][GPU_TILE_W / PIX_BLOC];
+  __local unsigned couleur [TILE_H / PIX_BLOC][TILE_W / PIX_BLOC];
   int x = get_global_id (0);
   int y = get_global_id (1);
   int xloc = get_local_id (0);

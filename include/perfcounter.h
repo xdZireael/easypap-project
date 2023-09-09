@@ -1,24 +1,19 @@
 #ifndef PERFCOUNTER_IS_DEF
 #define PERFCOUNTER_IS_DEF
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Monitor flags
-#define EASYPAP_MONITOR_L1 1
-#define EASYPAP_MONITOR_L2 2
-#define EASYPAP_MONITOR_L3 4
-#define EASYPAP_MONITOR_TLB 8
-#define EASYPAP_MONITOR_ALL                                                    \
-  (EASYPAP_MONITOR_L1 | EASYPAP_MONITOR_L2 | EASYPAP_MONITOR_L3 |              \
-   EASYPAP_MONITOR_TLB)
+#define EASYPAP_MONITOR_CYCLES 1
+#define EASYPAP_MONITOR_STALLS 2
+#define EASYPAP_MONITOR_ALL (EASYPAP_MONITOR_CYCLES | EASYPAP_MONITOR_STALLS)
+
 
 typedef enum
 {
-  EASYPAP_L2_HIT,
-  EASYPAP_L3_MISS,
-  EASYPAP_L3_HIT,
-  EASYPAP_ALL_LOADS,
+  EASYPAP_TOTAL_CYCLES,
+  EASYPAP_TOTAL_STALLS,
   EASYPAP_NB_COUNTERS
 } easypap_perfcounter_counter_t;
 
@@ -45,6 +40,8 @@ void easypap_perfcounter_monitor_stop_tile (unsigned cpu);
 void easypap_perfcounter_monitor_start_iteration ();
 void easypap_perfcounter_monitor_stop_iteration ();
 
+void easypap_perfcounter_monitor_stop_all ();
+
 int easypap_perfcounter_create_event_set (unsigned cpu);
 int64_t easypap_perfcounter_get_counter (unsigned cpu,
                                          easypap_perfcounter_counter_t counter);
@@ -55,6 +52,7 @@ void easypap_perfcounter_finalize (void);
 
 #if ENABLE_PAPI
 extern unsigned do_cache;
+extern unsigned do_trace;
 #else
 #define do_cache (unsigned)0
 #endif

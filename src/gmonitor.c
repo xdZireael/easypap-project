@@ -166,6 +166,13 @@ void __gmonitor_end_tile (long time, int who, int x, int y, int width,
   }
 }
 
+void __gmonitor_tile (long start_time, long end_time, int who, int x, int y, int width,
+                      int height)
+{
+  __gmonitor_start_tile (start_time, who);
+  __gmonitor_end_tile (end_time, who, x, y, width, height);
+}
+
 void __gmonitor_end_iteration (long time)
 {
   cpustat_freeze (time);

@@ -18,7 +18,7 @@ typedef enum {
 
 unsigned easypap_requested_number_of_threads (void);
 unsigned easypap_number_of_cores (void);
-unsigned easypap_number_of_gpus (void);
+unsigned easypap_number_of_gpus_ocl (void);
 unsigned easypap_gpu_lane (task_type_t task_type);
 int easypap_mpi_rank (void);
 int easypap_mpi_size (void);

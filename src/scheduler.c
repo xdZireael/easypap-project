@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "error.h"
 #include "debug.h"
 #include "global.h"
 #include "scheduler.h"
@@ -68,7 +69,8 @@ static void add_task (struct task todo, int w)
   workers[w].tasks[workers[w].f] = todo;
   workers[w].f                   = (workers[w].f + 1) % WORK_QUEUE;
   workers[w].todo++;
-  assert (workers[w].todo < WORK_QUEUE);
+  if (workers[w].todo > WORK_QUEUE)
+    exit_with_error ("Task queue overflow (#tasks > %d). Try to increase tile size.", WORK_QUEUE);
   pthread_cond_signal (&workers[w].cond);
   pthread_mutex_unlock (&workers[w].mutex);
 }

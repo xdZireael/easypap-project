@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-EASYPAPDIR=${EASYPAPDIR:-.}
+_main_dir=$(dirname $BASH_SOURCE)
+EASYPAPDIR=${EASYPAPDIR:-${_main_dir}}
+. ${_main_dir}/script/easypap-common.bash
+unset _main_dir
 
 error()
 {
@@ -43,9 +46,6 @@ if [[ ${use_params} = yes ]]; then
     fi
 
 fi
-
-# source common vars
-. ${EASYPAPDIR}/script/easypap-common.bash
 
 # build easyview if needed
 if [[ ! -f ${VIEW} ]]; then

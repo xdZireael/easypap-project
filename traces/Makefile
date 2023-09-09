@@ -39,6 +39,10 @@ LDLIBS		+= -lGL -lpthread -ldl
 endif
 
 # Query CFLAGS and LDLIBS for all packages
+PKG_CHECK	:= $(shell if pkg-config --print-errors --exists $(PACKAGES); then echo 0; else echo 1; fi)
+ifeq ($(PKG_CHECK), 1)
+$(error Installation problem: missing package)
+endif
 CFLAGS		+= $(shell pkg-config --cflags $(PACKAGES))
 LDFLAGS		+= $(shell pkg-config --libs-only-L $(PACKAGES))
 LDLIBS		+= $(shell pkg-config --libs-only-l $(PACKAGES))
@@ -59,8 +63,7 @@ depend: $(DEPENDS)
 $(DEPENDS): $(MAKEFILES)
 
 $(DEPENDS): deps/%.d: src/%.c
-	$(CC) $(CFLAGS) -MM $< | \
-		sed -e 's|\(.*\)\.o:|deps/\1.d obj/\1.o:|g' > $@
+	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
 
 ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPENDS)

@@ -40,19 +40,17 @@
 #define MAGNIFICATION 2
 #define Y_MARGIN 2
 #define cpu_row_height(taskh) ((taskh) + 2 * Y_MARGIN + 1)
-#define task_height(space) ((space) - 2 * Y_MARGIN - 1)
+#define task_height(space) ((space)-2 * Y_MARGIN - 1)
 
 #define GANTT_WIDTH                                                            \
   (WINDOW_WIDTH -                                                              \
    (LEFT_MARGIN + PREVIEW_DIM + 2 * RIGHT_MARGIN + CACHE_STATS_WIDTH))
-#define LEFT_MARGIN 64
+#define LEFT_MARGIN 80
 #define RIGHT_MARGIN 24
 #define TOP_MARGIN 48
 #define FONT_HEIGHT 20
 #define BOTTOM_MARGIN (FONT_HEIGHT + 4)
 #define INTERTRACE_MARGIN (2 * FONT_HEIGHT + 2)
-
-#define PRELOAD_THUMBNAILS 1
 
 #define SQUARE_SIZE 16
 #define TILE_ALPHA 0x80
@@ -72,9 +70,7 @@ static SDL_Texture *cache_tex[NB_CACHE_LEVELS] = {NULL, NULL, NULL};
 static unsigned cache_colors[NB_CACHE_LEVELS]  = {0xFFFF00FF, 0xFFC600FF,
                                                   0xBF9503FF};
 
-#ifdef PRELOAD_THUMBNAILS
 static SDL_Texture **thumb_tex[MAX_TRACES] = {NULL, NULL};
-#endif
 
 static int TASK_HEIGHT   = MAX_TASK_HEIGHT;
 static int WINDOW_HEIGHT = -1;
@@ -121,10 +117,10 @@ static int footprint_mode = 0;
 static long start_time = 0, end_time = 0, duration = 0;
 
 static long selection_start_time = 0, selection_duration = 0;
-static long mouse_orig_time    = 0;
-static SDL_Point mouse         = {-1, -1};
-static int mouse_in_gantt_zone = 0;
-static int mouse_down          = 0;
+static long mouse_orig_time     = 0;
+static SDL_Point mouse          = {-1, -1};
+static int mouse_in_gantt_zone  = 0;
+static int mouse_down           = 0;
 
 static int max_cores = -1, max_iterations = -1;
 static long max_time = -1;
@@ -218,7 +214,7 @@ static void layout_recompute (int at_init)
     // See how much space we have for GANTT chart
     unsigned space = WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
     space /= trace[0].nb_cores;
-    TASK_HEIGHT = task_height(space);
+    TASK_HEIGHT = task_height (space);
     if (TASK_HEIGHT < MIN_TASK_HEIGHT)
       exit_with_error ("Window height (%d) is not big enough to display so "
                        "many CPUS (%d)\n",
@@ -259,7 +255,7 @@ static void layout_recompute (int at_init)
     unsigned space =
         WINDOW_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN - INTERTRACE_MARGIN;
     space /= (trace[0].nb_cores + trace[1].nb_cores);
-    TASK_HEIGHT = task_height(space);
+    TASK_HEIGHT = task_height (space);
     if (TASK_HEIGHT < MIN_TASK_HEIGHT)
       exit_with_error ("Window height (%d) is not big enough to display so "
                        "many CPUS (%d)\n",
@@ -350,6 +346,11 @@ static inline int point_in_rect (const SDL_Point *p, const SDL_Rect *r)
 static inline int point_inside_mosaic (const SDL_Point *p, unsigned trace_num)
 {
   return point_in_rect (p, &trace_display_info[trace_num].mosaic);
+}
+
+static inline int point_inside_mosaics (const SDL_Point *p)
+{
+  return point_inside_mosaic (p, 0) || ((nb_traces == 1) ? 0 : (point_inside_mosaic (p, 1)));
 }
 
 static inline int point_inside_gantt (const SDL_Point *p, unsigned trace_num)
@@ -631,6 +632,13 @@ static void create_digit_textures (TTF_Font *font)
 
   sigma_tex = SDL_CreateTextureFromSurface (renderer, s);
   SDL_FreeSurface (s);
+
+  s = TTF_RenderUTF8_Blended (font, "     Stalls (%)     ", silver_color);
+  if (s == NULL)
+    exit_with_error ("TTF_RenderText_Solid failed: %s", SDL_GetError ());
+
+  stat_caption_tex = SDL_CreateTextureFromSurface (renderer, s);
+  SDL_FreeSurface (s);
 }
 
 static void create_tab_textures (TTF_Font *font)
@@ -809,13 +817,6 @@ static void create_misc_tex (void)
     exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
 
   mouse_tex = SDL_CreateTextureFromSurface (renderer, surf);
-  SDL_FreeSurface (surf);
-
-  surf = IMG_Load ("./traces/img/caption.png");
-  if (surf == NULL)
-    exit_with_error ("IMG_Load failed: %s", SDL_GetError ());
-
-  stat_caption_tex = SDL_CreateTextureFromSurface (renderer, surf);
   SDL_FreeSurface (surf);
 
   surf = IMG_Load ("./traces/img/frame.png");
@@ -1061,30 +1062,21 @@ static void display_selection (void)
 static void display_cache_histo (const int64_t *counters, int x, int y, int w,
                                  int h)
 {
-  SDL_Rect dst;
-  int level[NB_CACHE_LEVELS];
-
-  if (counters[EASYPAP_ALL_LOADS] == 0)
+  if (counters[EASYPAP_TOTAL_CYCLES] == 0)
     return;
 
-  // L1 HIT
-  level[0] = ((counters[EASYPAP_ALL_LOADS] - counters[EASYPAP_L3_MISS] -
-               counters[EASYPAP_L3_HIT] - counters[EASYPAP_L2_HIT]) *
-              w) /
-             counters[EASYPAP_ALL_LOADS];
-  // L2 HIT
-  level[1] = counters[EASYPAP_L2_HIT] * w / counters[EASYPAP_ALL_LOADS];
-  // L3 HIT
-  level[2] = counters[EASYPAP_L3_HIT] * w / counters[EASYPAP_ALL_LOADS];
+  // STALL RATIO
+  unsigned ratio = counters[EASYPAP_TOTAL_STALLS] * 255 / counters[EASYPAP_TOTAL_CYCLES];
+  SDL_Rect dst;
+
+  SDL_SetRenderDrawColor (renderer, ratio, 255 - ratio, 0, 255);
 
   dst.x = x;
   dst.y = y;
+  dst.w = counters[EASYPAP_TOTAL_STALLS] * w / counters[EASYPAP_TOTAL_CYCLES];
   dst.h = h;
-  for (int l = 0; l < NB_CACHE_LEVELS; l++) {
-    dst.w = level[l];
-    SDL_RenderCopy (renderer, cache_tex[l], NULL, &dst);
-    dst.x += dst.w;
-  }
+
+  SDL_RenderFillRect (renderer, &dst);
 }
 
 static void display_bubble (int x, int y, unsigned long duration,
@@ -1138,7 +1130,7 @@ typedef struct
   {                                                                            \
     NULL, NULL, 0, 0, {0, 0, 0, 0},                                            \
     {                                                                          \
-      0, 0, 0, 0                                                               \
+      0, 0/*, 0, 0*/                                                           \
     }                                                                          \
   }
 
@@ -1229,7 +1221,6 @@ static void display_misc_status (void)
 
 static void display_tile_background (int tr)
 {
-#ifdef PRELOAD_THUMBNAILS
   static int displayed_iter[MAX_TRACES] = {-1, -1};
   static SDL_Texture *tex[MAX_TRACES]   = {NULL};
 
@@ -1250,38 +1241,6 @@ static void display_tile_background (int tr)
 
   if (tex[tr] != NULL)
     SDL_RenderCopy (renderer, tex[tr], NULL, &trace_display_info[tr].mosaic);
-
-#else
-#error Obsolete code needs to be fixed! (or dropped)
-  if (use_thumbnails) {
-    static int displayed_iter = -1;
-    static SDL_Surface *thumb = NULL;
-    char filename[MAX_FILENAME];
-
-    if (mouse.x != -1) {
-      long time = pixel_to_time (mouse.x);
-      int iter  = trace_data_search_iteration (tr, time);
-
-      if (iter != -1 && iter != displayed_iter) {
-        displayed_iter = iter;
-        if (thumb != NULL) {
-          SDL_FreeSurface (thumb);
-          thumb = NULL;
-        }
-        sprintf (filename, "./traces/data/thumb_%04d.png", iter + 1);
-        thumb = IMG_Load (filename);
-        // if( thumb != NULL)
-        //   printf ("Thumbnail [%s] loaded\n", filename);
-      }
-    }
-
-    if (thumb != NULL) {
-      // TODO: display thumb
-    } else {
-      // TODO; display black square
-    }
-  }
-#endif
 }
 
 static void display_gantt_background (trace_t *tr, int _t, int first_it)
@@ -1339,11 +1298,9 @@ static void display_cache_stats (trace_t *tr, int _t,
   r.x = trace_display_info[_t].gantt.x + trace_display_info[_t].gantt.w +
         RIGHT_MARGIN;
   r.w = MAX_CACHE_WIDTH;
-  r.y = trace_display_info[_t].gantt.y - 16;
   r.h = 18;
-  SDL_RenderCopy (renderer, stat_background, NULL, &r);
+  r.y = trace_display_info[_t].gantt.y - r.h;
 
-  r.h = 16;
   SDL_RenderCopy (renderer, stat_caption_tex, NULL, &r);
 
   r.y += r.h + cpu_row_height (TASK_HEIGHT) / 2 - MIN_TASK_HEIGHT / 2;
@@ -1650,8 +1607,8 @@ static void trace_graphics_display (void)
   int loop_stop  = nb_traces;
   int loop_inc   = 1;
 
-  if (nb_traces > 1 && mouse_in_gantt_zone) {
-    if (point_inside_gantt (&mouse, 1)) {
+  if (nb_traces > 1) {
+    if (point_inside_gantt (&mouse, 1) || point_inside_mosaic (&mouse, 1)) {
       loop_start = nb_traces - 1;
       loop_stop  = -1;
       loop_inc   = -1;
@@ -2267,9 +2224,7 @@ void trace_graphics_init (unsigned w, unsigned h)
 
   create_text_texture (the_font);
 
-#ifdef PRELOAD_THUMBNAILS
   preload_thumbnails (max_iterations);
-#endif
 
   SDL_SetRenderDrawBlendMode (renderer, SDL_BLENDMODE_BLEND);
 }

@@ -27,13 +27,13 @@ int tile_down_right (int x, int y, int w, int h, int cpu)
 {
   int change = 0;
 
-  monitoring_start_tile (cpu);
+  uint64_t clock = monitoring_start_tile (cpu);
 
   for (int i = y; i < y + h; i++)
     for (int j = x; j < x + w; j++)
       if (cur_img (i, j)) {
         if (i > 0 && j > 0) {
-          uint32_t m = max (cur_img (i - 1, j), cur_img (i, j - 1));
+          uint32_t m = MAX (cur_img (i - 1, j), cur_img (i, j - 1));
           if (m > cur_img (i, j)) {
             change     = 1;
             cur_img (i, j) = m;
@@ -53,7 +53,7 @@ int tile_down_right (int x, int y, int w, int h, int cpu)
         }
       }
 
-  monitoring_end_tile_id (x, y, w, h, cpu, TASKID_DOWN_RIGHT);
+  monitoring_end_tile_id (clock, x, y, w, h, cpu, TASKID_DOWN_RIGHT);
 
   return change;
 }
@@ -64,13 +64,13 @@ int tile_up_left (int x, int y, int w, int h, int cpu)
 {
   int change = 0;
 
-  monitoring_start_tile (cpu);
+  uint64_t clock = monitoring_start_tile (cpu);
 
   for (int i = y + h - 1; i >= y; i--)
     for (int j = x + w - 1; j >= x; j--)
       if (cur_img (i, j)) {
         if (i < DIM - 1 && j < DIM - 1) {
-          uint32_t m = max (cur_img (i + 1, j), cur_img (i, j + 1));
+          uint32_t m = MAX (cur_img (i + 1, j), cur_img (i, j + 1));
           if (m > cur_img (i, j)) {
             change     = 1;
             cur_img (i, j) = m;
@@ -90,7 +90,7 @@ int tile_up_left (int x, int y, int w, int h, int cpu)
         }
       }
 
-  monitoring_end_tile_id (x, y, w, h, cpu, TASKID_UP_LEFT);
+  monitoring_end_tile_id (clock, x, y, w, h, cpu, TASKID_UP_LEFT);
 
   return change;
 }
@@ -126,6 +126,7 @@ unsigned max_compute_tiled (unsigned nb_iter)
     for (int i = 0; i < NB_TILES_Y; i++)
       for (int j = 0; j < NB_TILES_X; j++)
         change |= tile_down_right (j * TILE_W, i * TILE_H, TILE_W, TILE_H, 0);
+
     // Up-left propagation
     for (int i = NB_TILES_Y - 1; i >= 0; i--)
       for (int j = NB_TILES_X - 1; j >= 0; j--)

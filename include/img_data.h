@@ -2,12 +2,13 @@
 #define IMG_DATA_IS_DEF
 
 #include "global.h"
+#include "cppdefs.h"
 
 #include <stdint.h>
 
-extern uint32_t *restrict image, *restrict alt_image;
+extern uint32_t *RESTRICT image, *RESTRICT alt_image;
 
-static inline uint32_t *img_cell (uint32_t *restrict i, int l, int c)
+static inline uint32_t *img_cell (uint32_t *RESTRICT i, int l, int c)
 {
   return i + l * DIM + c;
 }

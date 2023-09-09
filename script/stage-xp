@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+_script_dir=$(dirname $BASH_SOURCE)
+EASYPAPDIR=${EASYPAPDIR:-$(realpath ${_script_dir}/..)}
+. ${_script_dir}/easypap-common.bash
+unset _script_dir
+
 usage()
 {
     echo "Usage: $PROGNAME [ option ] dirname"
@@ -22,10 +27,6 @@ shall_we_continue()
 }
 
 PROGNAME=$0
-
-EASYPAPDIR=${EASYPAPDIR:-.}
-
-. ${EASYPAPDIR}/script/easypap-common.bash
 
 dryrun=0
 
@@ -61,11 +62,26 @@ else
     $cmd mkdir -p ${DEST}
 fi
 
-THUMBS=( ${TRACEDIR}/*.png )
-TRACES=( ${TRACEDIR}/*.evt )
+files=()
+traces=( ${TRACEDIR}/*.evt )
+if [[ -f ${traces[0]} ]]; then
+    files=( ${traces[@]} )
+fi
 
-echo "Staging ${#TRACES[@]} trace files and ${#THUMBS[@]} thumbnails into ${DEST}"
+png=( ${TRACEDIR}/*.png )
+if [[ -f ${png[0]} ]]; then
+    files=( ${files[@]} ${png[@]} )
+fi
 
-$cmd cp ${TRACES[@]} ${THUMBS[@]} ${DEST}
+if [[ ${#files[@]} > 0 ]]; then
+
+    echo "Staging ${#files[@]} files into ${DEST}"
+
+    $cmd mv ${files[@]} ${DEST}
+
+else
+    echo "No file found in ${TRACEDIR}/"
+    exit 1
+fi
 
 exit 0

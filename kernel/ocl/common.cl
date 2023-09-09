@@ -1,3 +1,5 @@
+#ifndef COMMON_IS_DEF
+#define COMMON_IS_DEF
 //
 // !!! DO NOT MODIFY THIS FILE !!!
 //
@@ -29,8 +31,7 @@ static float4 color_scatter (unsigned c)
 {
   uchar4 ci;
 
-  // ci.s0123 = (*((uchar4 *) &c)).s1203; 
-  ci.s0123 = (*((uchar4 *) &c)).s2013; 
+  ci.s0123 = (*((uchar4 *) &c)).s1230; 
   return convert_float4 (ci) / (float4) 255;
 }
 #endif
@@ -74,3 +75,5 @@ static inline unsigned rgba (int r, int g, int b, int a)
 {
   return (r << 24) | (g << 16) | (b << 8) | a;
 }
+
+#endif

@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "arch_flags.h"
 #include "constants.h"
@@ -17,12 +18,15 @@
 #include "ocl.h"
 #include "time_macros.h"
 
+
+#define _stringify(s) #s
+#define stringify(s) _stringify(s)
+
+
 #define MAX_PLATFORMS 3
 #define MAX_DEVICES 5
 #define MAX_KERNELS 32
 
-unsigned GPU_TILE_W = 0;
-unsigned GPU_TILE_H = 0;
 unsigned GPU_SIZE_X = 0;
 unsigned GPU_SIZE_Y = 0;
 
@@ -50,35 +54,46 @@ static size_t file_size (const char *filename)
   return sb.st_size;
 }
 
-static char *file_load (const char *filename)
+static char *file_load (const char *filename, const char *common)
 {
-  FILE *f;
+  FILE *f, *fc;
   char *b;
-  size_t s;
+  size_t s, sc;
   size_t r;
 
   s = file_size (filename);
-  b = malloc (s + 1);
+  sc = file_size (common);
+  b = malloc (s + sc + 2);
   if (!b)
     exit_with_error ("Malloc failed (%s)", strerror (errno));
+
+  fc = fopen (common, "r");
+  if (fc == NULL)
+    exit_with_error ("Cannot open \"%s\" file (%s)", common,
+                     strerror (errno));
+
+  r = fread (b, sc, 1, fc);
+  if (r != 1)
+    exit_with_error ("fread failed (%s)", strerror (errno));
 
   f = fopen (filename, "r");
   if (f == NULL)
     exit_with_error ("Cannot open \"%s\" file (%s)", filename,
                      strerror (errno));
 
-  r = fread (b, s, 1, f);
+  b[sc] = '\n';
+  r = fread (b + sc + 1, s, 1, f);
   if (r != 1)
     exit_with_error ("fread failed (%s)", strerror (errno));
 
-  b[s] = '\0';
+  b[s + sc] = '\0';
 
   return b;
 }
 
-unsigned easypap_number_of_gpus (void)
+unsigned easypap_number_of_gpus_ocl (void)
 {
-  return (opencl_used ? 1 : 0);
+  return (gpu_used ? 1 : 0);
 }
 
 static void ocl_acquire (void)
@@ -259,14 +274,14 @@ void ocl_init (int show_config, int silent)
     context = clCreateContext (NULL, 1, &chosen_device, NULL, NULL, &err);
 
   check (err, "Failed to create compute context. Please make sure OpenCL and "
-              "OpenGL both use the same device (--show-ocl).");
+              "OpenGL both use the same device (--show-devices).");
 
   // Create a command queue
   //
   queue = clCreateCommandQueue (context, chosen_device,
                                 CL_QUEUE_PROFILING_ENABLE, &err);
   check (err, "Failed to create command queue. Please make sure OpenCL and "
-              "OpenGL both use the same device (--show-ocl).");
+              "OpenGL both use the same device (--show-devices).");
 }
 
 void ocl_alloc_buffers (void)
@@ -321,16 +336,16 @@ static void ocl_list_variants (void)
   exit (EXIT_SUCCESS);
 }
 
-#define CALIBRATION_BURST 4
+#define CALIBRATION_BURST 16
 #define CALIBRATION_ITER 64
-long _calibration_delta = 0;
+static int64_t _calibration_delta = 0;
 
 static void calibrate (void)
 {
   size_t global[1] = {4096 * 64}; // global domain size for our calculation
   size_t local[1]  = {16};        // local domain size for our calculation
   cl_event events[CALIBRATION_BURST];
-  long t;
+  int64_t t;
   cl_int err;
 
   bench_kernel = clCreateKernel (program, "bench_kernel", &err);
@@ -349,7 +364,7 @@ static void calibrate (void)
     for (unsigned it = 0; it < CALIBRATION_BURST; it++)
       err = clEnqueueNDRangeKernel (queue, bench_kernel, 1, NULL, global, local,
                                     0, NULL, &events[it]);
-    clFinish (queue);
+    clWaitForEvents (1, &events[CALIBRATION_BURST - 1]);
     t = what_time_is_it ();
 
     cl_ulong end;
@@ -358,10 +373,12 @@ static void calibrate (void)
                              CL_PROFILING_COMMAND_END, sizeof (cl_ulong), &end,
                              NULL);
 
+    // printf ("Calibration: getclock= %" PRId64 ", clGetEvent= %" PRId64 "\n", t, end / 1000);
+
     if (i == 0) {
       _calibration_delta = t - (end / 1000);
     } else {
-      _calibration_delta = min (_calibration_delta, t - (end / 1000));
+      _calibration_delta = MIN (_calibration_delta, t - (end / 1000));
     }
 
     for (unsigned it = 0; it < CALIBRATION_BURST; it++)
@@ -390,36 +407,24 @@ void ocl_build_program (int list_variants)
   if (!GPU_SIZE_Y)
     GPU_SIZE_Y = GPU_SIZE_X;
 
-  if (!GPU_TILE_W) {
-    str = getenv ("TILEX");
-    if (str != NULL)
-      GPU_TILE_W = atoi (str);
-    else
-      GPU_TILE_W = DEFAULT_GPU_TILE_SIZE;
-  }
-
-  if (!GPU_TILE_H) {
-    str = getenv ("TILEY");
-    if (str != NULL)
-      GPU_TILE_H = atoi (str);
-    else
-      GPU_TILE_H = GPU_TILE_W;
-  }
-
-  if (GPU_SIZE_X % GPU_TILE_W)
+  if (GPU_SIZE_X % TILE_W)
     fprintf (stderr,
-             "Warning: GPU_SIZE_X (%d) is not a multiple of GPU_TILE_W (%d)!\n",
-             GPU_SIZE_X, GPU_TILE_W);
+             "Warning: GPU_SIZE_X (%d) is not a multiple of TILE_W (%d)!\n",
+             GPU_SIZE_X, TILE_W);
 
-  if (GPU_SIZE_Y % GPU_TILE_H)
+  if (GPU_SIZE_Y % TILE_H)
     fprintf (stderr,
-             "Warning: GPU_SIZE_Y (%d) is not a multiple of GPU_TILE_H (%d)!\n",
-             GPU_SIZE_Y, GPU_TILE_H);
+             "Warning: GPU_SIZE_Y (%d) is not a multiple of TILE_H (%d)!\n",
+             GPU_SIZE_Y, TILE_H);
+
+  // Make sure we don't exceed the maximum group size
+  if (TILE_W * TILE_H > max_workgroup_size)
+    exit_with_error ("TILE_W (%d) x TILE_H (%d) cannot exceed CL_DEVICE_MAX_WORK_GROUP_SIZE (%ld)", TILE_W, TILE_H, max_workgroup_size);
 
   // Load program source into memory
   //
   sprintf (buffer, "kernel/ocl/%s.cl", kernel_name);
-  const char *opencl_prog = file_load (buffer);
+  const char *opencl_prog = file_load (buffer, "kernel/ocl/common.cl");
 
   // Attach program source to context
   //
@@ -438,30 +443,25 @@ void ocl_build_program (int list_variants)
   else
     endianness = "-DIS_BIG_ENDIAN";
 
-  char *arch= "";
-#if ARCH == X86_64
-  arch = "-DX86_64_ARCH";
-#elif ARCH == ARM64
-  arch = "-DARM64_ARCH";
-#endif
-
   if (draw_param)
     sprintf (buffer,
-             "-cl-mad-enable -cl-fast-relaxed-math"
-             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d "
-             "-DGPU_TILE_H=%d -DKERNEL_%s"
-             " -DPARAM=%s %s %s %s",
-             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name,
-             draw_param, debug_str, endianness, arch);
+             " -cl-strict-aliasing -cl-fast-relaxed-math"
+             " -cl-mad-enable"
+             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DTILE_W=%d"
+             " -DTILE_H=%d -DKERNEL_%s"
+             " -DPARAM=%s %s %s -D%s",
+             DIM, GPU_SIZE_X, GPU_SIZE_Y, TILE_W, TILE_H, kernel_name,
+             draw_param, debug_str, endianness, stringify(ARCH));
   else
     sprintf (buffer,
-             "-cl-mad-enable -cl-fast-relaxed-math"
-             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DGPU_TILE_W=%d "
-             "-DGPU_TILE_H=%d -DKERNEL_%s %s %s %s",
-             DIM, GPU_SIZE_X, GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H, kernel_name,
-             debug_str, endianness, arch);
+             " -cl-strict-aliasing -cl-fast-relaxed-math"
+             " -cl-mad-enable"
+             " -DDIM=%d -DGPU_SIZE_X=%d -DGPU_SIZE_Y=%d -DTILE_W=%d"
+             " -DTILE_H=%d -DKERNEL_%s %s %s -D%s",
+             DIM, GPU_SIZE_X, GPU_SIZE_Y, TILE_W, TILE_H, kernel_name,
+             debug_str, endianness, stringify(ARCH));
 
-  // printf ("OpenCL flags: %s\n", buffer);
+  //printf ("[OpenCL flags: %s]\n", buffer);
 
   err = clBuildProgram (program, 0, NULL, buffer, NULL, NULL);
 
@@ -505,13 +505,13 @@ void ocl_build_program (int list_variants)
   if (err != CL_SUCCESS) {
     // Fall back to generic version
     update_kernel = clCreateKernel (program, "update_texture", &err);
-    check (err, "Failed to create update kernel <update_texture>");
+    check (err, "Failed to create kernel <update_texture>");
   }
 
   calibrate ();
 
   printf ("Using %dx%d workitems grouped in %dx%d tiles \n", GPU_SIZE_X,
-          GPU_SIZE_Y, GPU_TILE_W, GPU_TILE_H);
+          GPU_SIZE_Y, TILE_W, TILE_H);
 }
 
 void ocl_send_data (void)
@@ -549,11 +549,11 @@ unsigned ocl_invoke_kernel_generic (unsigned nb_iter)
 {
   size_t global[2] = {GPU_SIZE_X,
                       GPU_SIZE_Y}; // global domain size for our calculation
-  size_t local[2]  = {GPU_TILE_W,
-                     GPU_TILE_H}; // local domain size for our calculation
+  size_t local[2]  = {TILE_W,
+                     TILE_H}; // local domain size for our calculation
   cl_int err;
 
-  monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
+  uint64_t clock = monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
 
   for (unsigned it = 1; it <= nb_iter; it++) {
 
@@ -578,7 +578,7 @@ unsigned ocl_invoke_kernel_generic (unsigned nb_iter)
 
   clFinish (queue);
 
-  monitoring_end_tile (0, 0, DIM, DIM, easypap_gpu_lane (TASK_TYPE_COMPUTE));
+  monitoring_end_tile (clock, 0, 0, DIM, DIM, easypap_gpu_lane (TASK_TYPE_COMPUTE));
 
   return 0;
 }
@@ -600,7 +600,7 @@ void ocl_update_texture (void)
 
   err = clEnqueueNDRangeKernel (queue, update_kernel, 2, NULL, global, local, 0,
                                 NULL, NULL);
-  check (err, "Failed to execute kernel");
+  check (err, "Failed to execute update_texture kernel");
 
   ocl_release ();
 
@@ -612,44 +612,44 @@ size_t ocl_get_max_workgroup_size (void)
   return max_workgroup_size;
 }
 
-static inline long ocl_start_time (cl_event evt)
+static inline int64_t ocl_start_time (cl_event evt)
 {
   cl_ulong t_start;
 
   clGetEventProfilingInfo (evt, CL_PROFILING_COMMAND_START, sizeof (cl_ulong),
                            &t_start, NULL);
 
-  return (long)(t_start / 1000) + _calibration_delta;
+  return (t_start / 1000) + _calibration_delta;
 }
 
-static inline long ocl_end_time (cl_event evt)
+static inline int64_t ocl_end_time (cl_event evt)
 {
   cl_ulong t_end;
 
   clGetEventProfilingInfo (evt, CL_PROFILING_COMMAND_END, sizeof (cl_ulong),
                            &t_end, NULL);
 
-  return (long)(t_end / 1000) + _calibration_delta;
+  return (t_end / 1000) + _calibration_delta;
 }
 
-long ocl_monitor (cl_event evt, int x, int y, int width, int height,
+int64_t ocl_monitor (cl_event evt, int x, int y, int width, int height,
                   task_type_t task_type)
 {
-  long start, end;
+  int64_t start, end;
   unsigned gpu_lane = easypap_gpu_lane (task_type);
 
   start = ocl_start_time (evt);
   end   = ocl_end_time (evt);
 
-  long now = what_time_is_it ();
+  int64_t now = what_time_is_it ();
   if (end > now)
     PRINT_DEBUG (
-        'o', "Warning: end of kernel (%s) ahead of current time by %ld µs\n",
+        'o', "Warning: end of kernel (%s) ahead of current time by %" PRId64 " µs\n",
         task_type == TASK_TYPE_COMPUTE ? "TASK_TYPE_COMPUTE"
                                        : "TASK_TYPE_TRANSFER",
         end - now);
 
-  PRINT_DEBUG ('m', "[%s] start: %ld, end: %ld\n", "kernel", start, end);
+  PRINT_DEBUG ('m', "[%s] start: %" PRId64 ", end: %" PRId64 "\n", "kernel", start, end);
 
   monitoring_gpu_tile (x, y, width, height, gpu_lane, start, end, task_type);
 

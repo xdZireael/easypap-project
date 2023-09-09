@@ -13,19 +13,16 @@
 #include <mpi.h>
 #endif
 
-#ifdef ENABLE_SHA
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-#endif
-
 #include "constants.h"
 #include "cpustat.h"
 #include "easypap.h"
+#include "gpu.h"
 #include "graphics.h"
 #include "hooks.h"
-#include "ocl.h"
-#include "perfcounter.h"
 #include "trace_record.h"
+#ifdef ENABLE_SHA
+#include "hash.h"
+#endif
 
 #define MAX_FILENAME 1024
 #define MAX_LABEL 64
@@ -43,10 +40,10 @@ char *tile_name          = NULL;
 char *draw_param         = NULL;
 char *easypap_image_file = NULL;
 
-static char *output_file           = "./plots/data/perf_data.csv";
+static char *output_file           = "./data/perf/data.csv";
 static char trace_label[MAX_LABEL] = {0};
 
-unsigned opencl_used                                           = 0;
+unsigned gpu_used                                              = 0;
 unsigned easypap_mpirun                                        = 0;
 static int _easypap_mpi_rank                                   = 0;
 static int _easypap_mpi_size                                   = 1;
@@ -57,29 +54,12 @@ static unsigned nb_cores                                       = 1;
 unsigned do_first_touch                                        = 0;
 static unsigned do_dump __attribute__ ((unused))               = 0;
 static unsigned do_thumbs __attribute__ ((unused))             = 0;
-static unsigned show_ocl_config                                = 0;
-static unsigned list_ocl_variants                              = 0;
+static unsigned show_gpu_config                                = 0;
+static unsigned list_gpu_variants                              = 0;
 static unsigned trace_starting_iteration                       = 1;
 static unsigned show_sha256_signature __attribute__ ((unused)) = 0;
 
 static hwloc_topology_t topology;
-
-#ifdef ENABLE_SHA
-static void build_hash (void *data, unsigned bytes, char *hash)
-{
-  int i;
-  unsigned char sha[SHA256_DIGEST_LENGTH] = {0};
-  char const alpha[]                      = "0123456789abcdef";
-
-  EVP_Digest (data, bytes, sha, NULL, EVP_sha256 (), NULL);
-
-  for (i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-    hash[2 * i]     = alpha[sha[i] >> 4];
-    hash[2 * i + 1] = alpha[sha[i] & 0xF];
-  }
-  hash[2 * i] = '\0';
-}
-#endif
 
 unsigned easypap_requested_number_of_threads (void)
 {
@@ -174,8 +154,7 @@ static void update_refresh_rate (int p)
 }
 
 static void output_perf_numbers (long time_in_us, unsigned nb_iter,
-                                 int64_t l1hits, int64_t l2hits, int64_t l3hits,
-                                 int64_t dramhits)
+                                 int64_t total_cycles, int64_t total_stalls)
 {
   FILE *f = fopen (output_file, "a");
   struct utsname s;
@@ -185,23 +164,21 @@ static void output_perf_numbers (long time_in_us, unsigned nb_iter,
                      strerror (errno));
 
   if (ftell (f) == 0) {
-    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n",
-             "machine", "size", "tilew", "tileh", "threads", "kernel",
-             "variant", "tiling", "iterations", "schedule", "places", "label",
-             "arg", "time", "l1hits", "l2hits", "l3hits", "dramhits");
+    fprintf (f, "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n", "machine",
+             "size", "tilew", "tileh", "threads", "kernel", "variant", "tiling",
+             "iterations", "schedule", "places", "label", "arg", "time",
+             "total_cycles", "total_stalls");
   }
 
   if (uname (&s) < 0)
     exit_with_error ("uname failed (%s)", strerror (errno));
 
-  fprintf (f,
-           "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld;%" PRId64 ";%" PRId64
-           ";%" PRId64 ";%" PRId64 "\n",
-           s.nodename, DIM, TILE_W, TILE_H,
-           easypap_requested_number_of_threads (), kernel_name, variant_name,
-           tile_name, nb_iter, easypap_omp_schedule (), easypap_omp_places (),
-           trace_label, (draw_param ?: "none"), time_in_us, l1hits, l2hits,
-           l3hits, dramhits);
+  fprintf (
+      f, "%s;%u;%u;%u;%u;%s;%s;%s;%u;%s;%s;%s;%s;%ld;%" PRId64 ";%" PRId64 "\n",
+      s.nodename, DIM, TILE_W, TILE_H, easypap_requested_number_of_threads (),
+      kernel_name, variant_name, tile_name, nb_iter, easypap_omp_schedule (),
+      easypap_omp_places (), trace_label, (draw_param ?: "none"), time_in_us,
+      total_cycles, total_stalls);
 
   fclose (f);
 }
@@ -226,11 +203,16 @@ static void usage (int val);
 
 static void filter_args (int *argc, char *argv[]);
 
+static unsigned default_tile_size (void)
+{
+  return gpu_used ? DEFAULT_GPU_TILE_SIZE : DEFAULT_CPU_TILE_SIZE;
+}
+
 static void check_tile_size (void)
 {
   if (TILE_W == 0) {
     if (NB_TILES_X == 0) {
-      TILE_W     = TILE_H ?: DEFAULT_CPU_TILE_SIZE;
+      TILE_W     = default_tile_size ();
       NB_TILES_X = DIM / TILE_W;
     } else {
       TILE_W = DIM / NB_TILES_X;
@@ -246,13 +228,9 @@ static void check_tile_size (void)
   if (DIM % TILE_W)
     exit_with_error ("DIM (%d) is not a multiple of TILE_W (%d)!", DIM, TILE_W);
 
-  if (DIM % NB_TILES_X)
-    exit_with_error ("DIM (%d) is not a multiple of NB_TILES_X (%d)!", DIM,
-                     NB_TILES_X);
-
   if (TILE_H == 0) {
     if (NB_TILES_Y == 0) {
-      TILE_H     = TILE_W;
+      TILE_H     = default_tile_size ();
       NB_TILES_Y = DIM / TILE_H;
     } else {
       TILE_H = DIM / NB_TILES_Y;
@@ -267,16 +245,12 @@ static void check_tile_size (void)
 
   if (DIM % TILE_H)
     exit_with_error ("DIM (%d) is not a multiple of TILE_H (%d)!", DIM, TILE_H);
-
-  if (DIM % NB_TILES_Y)
-    exit_with_error ("Warning: DIM (%d) is not a multiple of NB_TILES_Y (%d)!",
-                     DIM, NB_TILES_Y);
 }
 
 static void generate_log_name (char *dest, size_t size, const char *prefix,
                                const char *extension, const int iterations)
 {
-  snprintf (dest, size, "%s-%s-%s-%s-dim-%d-iter-%d-arg-%s.%s", prefix,
+  snprintf (dest, size, "%s%s-%s-%s-dim-%d-iter-%d-arg-%s.%s", prefix,
             kernel_name, variant_name, tile_name, DIM, iterations,
             (draw_param ?: "none"), extension);
 }
@@ -325,11 +299,15 @@ static void init_phases (void)
     if (kernel_name == NULL)
       kernel_name = DEFAULT_KERNEL;
 
-    if (variant_name == NULL)
-      variant_name = opencl_used ? DEFAULT_OCL_VARIANT : DEFAULT_VARIANT;
+    if (variant_name == NULL) {
+      if (gpu_used)
+        variant_name = DEFAULT_GPU_VARIANT;
+      if (variant_name == NULL)
+        variant_name = DEFAULT_VARIANT;
+    }
   }
 
-  hooks_establish_bindings (show_ocl_config | list_ocl_variants);
+  hooks_establish_bindings (show_gpu_config | list_gpu_variants);
 
 #ifdef ENABLE_SDL
   master_do_display = do_display;
@@ -365,9 +343,13 @@ static void init_phases (void)
 
     set_default_trace_label ();
 
+    unsigned nb_gpus = 0;
+    if (gpu_used)
+      nb_gpus = easypap_number_of_gpus ();
+
     trace_record_init (filename, easypap_requested_number_of_threads (),
-                       easypap_number_of_gpus (), DIM, trace_label,
-                       trace_starting_iteration, do_cache);
+                       nb_gpus, DIM, trace_label, trace_starting_iteration,
+                       do_cache);
   }
 #endif
 #endif
@@ -382,13 +364,13 @@ static void init_phases (void)
   if (the_tile_check != NULL)
     the_tile_check ();
 
-  if (opencl_used) {
-    ocl_init (show_ocl_config, list_ocl_variants);
-    ocl_build_program (list_ocl_variants);
-    ocl_alloc_buffers ();
-    PRINT_DEBUG ('i', "Init phase 2: OpenCL initialized\n");
+  if (gpu_used) {
+    gpu_init (show_gpu_config, list_gpu_variants);
+    gpu_build_program (list_gpu_variants);
+    gpu_alloc_buffers ();
+    PRINT_DEBUG ('i', "Init phase 2: GPU initialized\n");
   } else
-    PRINT_DEBUG ('i', "Init phase 2: [OpenCL init not required]\n");
+    PRINT_DEBUG ('i', "Init phase 2: [GPU init not required]\n");
 
   // OpenCL context is initialized, so we can safely call kernel dependent
   // init() func which may allocate additional buffers.
@@ -435,10 +417,10 @@ static void init_phases (void)
                  "Init phase 6: [no kernel-specific draw() hook defined]\n");
   }
 
-  if (opencl_used) {
-    ocl_send_data ();
+  if (gpu_used) {
+    gpu_send_data ();
   } else
-    PRINT_DEBUG ('i', "Init phase 7: [no OpenCL data transfer involved]\n");
+    PRINT_DEBUG ('i', "Init phase 7: [no GPU data transfer involved]\n");
 }
 
 int main (int argc, char **argv)
@@ -449,17 +431,18 @@ int main (int argc, char **argv)
 
   filter_args (&argc, argv);
 
-  if (list_ocl_variants) {
+  if (list_gpu_variants) {
     // bypass complete initialization
 
     if (kernel_name == NULL)
       kernel_name = DEFAULT_KERNEL;
 
-    ocl_init (0, list_ocl_variants);
-    ocl_build_program (list_ocl_variants);
+    TILE_W = TILE_H = DEFAULT_GPU_TILE_SIZE;
 
-    // Never reached
-    assert (0);
+    gpu_init (0, list_gpu_variants);
+    gpu_build_program (list_gpu_variants);
+
+    exit (0);
   }
 
   arch_flags_print ();
@@ -473,7 +456,7 @@ int main (int argc, char **argv)
   if (master_do_display) {
     unsigned step = 0;
 
-    if (opencl_used)
+    if (gpu_used)
       graphics_share_texture_buffers ();
 
     if (the_refresh_img)
@@ -584,15 +567,15 @@ int main (int argc, char **argv)
             } else
               iterations += refresh_rate;
 
-            if (!opencl_used && the_refresh_img)
+            if (!gpu_used && the_refresh_img)
               the_refresh_img ();
 
             if (do_thumbs && iterations >= trace_starting_iteration) {
-              if (opencl_used) {
+              if (gpu_used) {
                 if (the_refresh_img)
                   the_refresh_img ();
                 else
-                  ocl_retrieve_data ();
+                  gpu_retrieve_data ();
               }
 
               if (easypap_proc_is_master ())
@@ -657,9 +640,8 @@ int main (int argc, char **argv)
         if (do_thumbs && iterations >= trace_starting_iteration) {
           if (the_refresh_img)
             the_refresh_img ();
-          else if (opencl_used)
-            ocl_retrieve_data ();
-
+          else if (gpu_used)
+            gpu_retrieve_data ();
           if (easypap_proc_is_master ())
             graphics_save_thumbnail (iter_no++);
         }
@@ -678,17 +660,14 @@ int main (int argc, char **argv)
       if (do_cache) {
         int64_t perfcounters[EASYPAP_NB_COUNTERS];
         if (easypap_perfcounter_get_total_counters (perfcounters) == 0)
-          output_perf_numbers (
-              temps, iterations,
-              perfcounters[EASYPAP_ALL_LOADS] - perfcounters[EASYPAP_L2_HIT] -
-                  perfcounters[EASYPAP_L3_HIT] - perfcounters[EASYPAP_L3_MISS],
-              perfcounters[EASYPAP_L2_HIT], perfcounters[EASYPAP_L3_HIT],
-              perfcounters[EASYPAP_L3_MISS]);
+          output_perf_numbers (temps, iterations,
+                               perfcounters[EASYPAP_TOTAL_CYCLES],
+                               perfcounters[EASYPAP_TOTAL_STALLS]);
       } else {
-        output_perf_numbers (temps, iterations, -1, -1, -1, -1);
+        output_perf_numbers (temps, iterations, -1, -1);
       }
 #else
-      output_perf_numbers (temps, iterations, -1, -1, -1, -1);
+      output_perf_numbers (temps, iterations, -1, -1);
 #endif
     }
     PRINT_MASTER ("%ld.%03ld \n", temps / 1000, temps % 1000);
@@ -699,27 +678,22 @@ int main (int argc, char **argv)
 
 #ifdef ENABLE_SHA
     if (show_sha256_signature) {
-      char hash[2 * SHA256_DIGEST_LENGTH + 1];
       char filename[MAX_FILENAME];
 
       if (!refresh_done) {
         if (the_refresh_img)
           the_refresh_img ();
-        else if (opencl_used)
-          ocl_retrieve_data ();
+        else if (gpu_used)
+          gpu_retrieve_data ();
         refresh_done = 1;
       }
 
-      build_hash (image, DIM * DIM * sizeof (unsigned), hash);
-      generate_log_name (filename, MAX_FILENAME, "hash", "sha256", iterations);
-
-      int fd = open (filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-      if (fd == -1)
-        exit_with_error ("Cannot create \"%s\" file (%s)", filename,
-                         strerror (errno));
-      write (fd, hash, 2 * SHA256_DIGEST_LENGTH);
-      close (fd);
-      printf ("SHA256: %s\n", hash);
+      if (easypap_proc_is_master ()) {
+        generate_log_name (filename, MAX_FILENAME, "data/hash/", "sha256",
+                           iterations);
+        build_hash_and_store_to_file (image, DIM * DIM * sizeof (unsigned),
+                                      filename);
+      }
     }
 #endif
 
@@ -730,15 +704,16 @@ int main (int argc, char **argv)
       if (!refresh_done) {
         if (the_refresh_img)
           the_refresh_img ();
-        else if (opencl_used)
-          ocl_retrieve_data ();
+        else if (gpu_used)
+          gpu_retrieve_data ();
         refresh_done = 1;
       }
 
       if (easypap_proc_is_master ()) {
         char filename[MAX_FILENAME];
 
-        generate_log_name (filename, MAX_FILENAME, "dump", "png", iterations);
+        generate_log_name (filename, MAX_FILENAME, "data/dump/", "png",
+                           iterations);
         graphics_dump_image_to_file (filename);
       }
     }
@@ -779,64 +754,65 @@ int main (int argc, char **argv)
 static void usage (int val)
 {
   fprintf (stderr, "Usage: %s [options]\n", progname);
-  fprintf (stderr, "options can be:\n");
   fprintf (
       stderr,
-      "\t-a\t| --arg <string>\t: pass argument <string> to draw function\n");
-  fprintf (stderr, "\t-c\t| --cache\t\t: enable cache monitoring\n");
-  fprintf (stderr, "\t-d\t| --debug-flags <flags>\t: enable debug messages "
-                   "(see debug.h)\n");
-  fprintf (stderr, "\t-du\t| --dump\t\t: dump final image to disk\n");
-  fprintf (stderr,
-           "\t-ft\t| --first-touch\t\t: touch memory on different cores\n");
-  fprintf (stderr, "\t-h\t| --help\t\t: display help\n");
-  fprintf (stderr, "\t-i\t| --iterations <n>\t: stop after n iterations\n");
-  fprintf (stderr,
-           "\t-k\t| --kernel <name>\t: override KERNEL environment variable\n");
-  fprintf (stderr,
-           "\t-lb\t| --label <name>\t: assign name <label> to current run\n");
-  fprintf (stderr, "\t-lov\t| --list-ocl-variants\t: list OpenCL variants\n");
-  fprintf (stderr, "\t-l\t| --load-image <file>\t: use PNG image <file>\n");
-  fprintf (stderr,
-           "\t-m \t| --monitoring\t\t: enable graphical thread monitoring\n");
-  fprintf (stderr, "\t-mpi\t| --mpirun <args>\t: pass <args> to the mpirun MPI "
-                   "process launcher\n");
-  fprintf (stderr,
-           "\t-n\t| --no-display\t\t: avoid graphical display overhead\n");
-  fprintf (stderr, "\t-nt\t| --nb-tiles <N>\t: use N x N tiles\n");
-  fprintf (stderr, "\t-nvs\t| --no-vsync\t\t: disable vertical sync\n");
-  fprintf (stderr, "\t-o\t| --ocl\t\t\t: use OpenCL version\n");
-  fprintf (stderr, "\t-of\t| --output-file <file>\t: output performance "
-                   "numbers in <file>\n");
-  fprintf (stderr, "\t-p\t| --pause\t\t: pause between iterations (press space "
-                   "to continue)\n");
-  fprintf (stderr, "\t-q\t| --quit\t\t: exit once iterations are done\n");
-  fprintf (stderr,
-           "\t-r\t| --refresh-rate <N>\t: display only 1/Nth of images\n");
-  fprintf (stderr, "\t-s\t| --size <DIM>\t\t: use image of size DIM x DIM\n");
-  fprintf (stderr,
-           "\t-sh\t| --show-hash\t\t: display SHA256 hash of last image\n");
-  fprintf (stderr,
-           "\t-si\t| --show-iterations\t: display iterations in main window\n");
-  fprintf (stderr,
-           "\t-so\t| --show-ocl\t\t: display OpenCL platform and devices\n");
-  fprintf (stderr,
-           "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n");
-  fprintf (stderr, "\t-tn\t| --thumbnails\t\t: generate thumbnails\n");
-  fprintf (stderr, "\t-tni\t| --thumbnails-iter <n>\t: generate thumbnails "
-                   "starting from iteration n\n");
-  fprintf (stderr, "\t-tw\t| --tile-width <W>\t: use tiles of width W\n");
-  fprintf (stderr, "\t-th\t| --tile-height <H>\t: use tiles of height H\n");
-  fprintf (stderr, "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n");
-  fprintf (stderr, "\t-t\t| --trace\t\t: enable trace\n");
-  fprintf (
-      stderr,
-      "\t-ti\t| --trace-iter <n>\t: enable trace starting from iteration n\n");
-  fprintf (stderr,
-           "\t-v\t| --variant <name>\t: select variant <name> of kernel\n");
-  fprintf (stderr, "\t-wt\t| --with-tile <name>\t: select do_tile_<name>\n");
+      "options can be:\n"
+      "\t-a\t| --arg <string>\t: pass argument <string> to draw function\n"
+      "\t-c\t| --counters\t\t: collect performance counters \n"
+      "\t-d\t| --debug-flags <flags>\t: enable debug messages (see debug.h)\n"
+      "\t-du\t| --dump\t\t: dump final image to disk\n"
+      "\t-ft\t| --first-touch\t\t: touch memory on different cores\n"
+      "\t-g\t| --gpu\t\t\t: use GPU device\n"
+      "\t-h\t| --help\t\t: display help\n"
+      "\t-i\t| --iterations <n>\t: stop after n iterations\n"
+      "\t-k\t| --kernel <name>\t: use <name> computation kernel\n"
+      "\t-lb\t| --label <name>\t: assign name <label> to current run\n"
+      "\t-lgv\t| --list-gpu-variants\t: list GPU variants\n"
+      "\t-l\t| --load-image <file>\t: use PNG image <file>\n"
+      "\t-m \t| --monitoring\t\t: enable graphical thread monitoring\n"
+      "\t-mpi\t| --mpirun <args>\t: pass <args> to the mpirun MPI process "
+      "launcher\n"
+      "\t-n\t| --no-display\t\t: avoid graphical display overhead\n"
+      "\t-nt\t| --nb-tiles <N>\t: use N x N tiles\n"
+      "\t-nvs\t| --no-vsync\t\t: disable vertical sync\n"
+      "\t-of\t| --output-file <file>\t: output performance numbers in <file>\n"
+      "\t-p\t| --pause\t\t: pause between iterations (press space to "
+      "continue)\n"
+      "\t-q\t| --quit\t\t: exit once iterations are done\n"
+      "\t-r\t| --refresh-rate <N>\t: display only 1/Nth of images\n"
+      "\t-s\t| --size <DIM>\t\t: use image of size DIM x DIM\n"
+      "\t-sh\t| --show-hash\t\t: display SHA256 hash of last image\n"
+      "\t-si\t| --show-iterations\t: display iterations in main window\n"
+      "\t-sd\t| --show-devices\t: display GPU devices\n"
+      "\t-sr\t| --soft-rendering\t: disable hardware acceleration\n"
+      "\t-tn\t| --thumbnails\t\t: generate thumbnails\n"
+      "\t-tni\t| --thumbnails-iter <n>\t: generate thumbnails starting from "
+      "iteration n\n"
+      "\t-tw\t| --tile-width <W>\t: use tiles of width W\n"
+      "\t-th\t| --tile-height <H>\t: use tiles of height H\n"
+      "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n"
+      "\t-t\t| --trace\t\t: enable trace\n"
+      "\t-ti\t| --trace-iter <n>\t: enable trace starting from iteration n\n"
+      "\t-v\t| --variant <name>\t: select kernel variant <name>\n"
+      "\t-wt\t| --with-tile <name>\t: use do_tile_<name> tiling function\n");
 
   exit (val);
+}
+
+static void usage_error (char *msg)
+{
+  fprintf (stderr, "%s\n", msg);
+  usage (1);
+}
+
+static void warning (char *option, char *flag1, char *flag2)
+{
+  if (flag2 != NULL)
+    fprintf (stderr, "Warning: option %s ignored because neither %s nor %s are defined\n",
+               option, flag1, flag2);
+  else
+    fprintf (stderr, "Warning: option %s ignored because %s is not defined\n",
+               option, flag1);
 }
 
 static void filter_args (int *argc, char *argv[])
@@ -862,268 +838,236 @@ static void filter_args (int *argc, char *argv[])
       usage (0);
     } else if (!strcmp (*argv, "--soft-rendering") || !strcmp (*argv, "-sr")) {
       soft_rendering = 1;
-    } else if (!strcmp (*argv, "--show-ocl") || !strcmp (*argv, "-so")) {
-      show_ocl_config = 1;
-      opencl_used     = 1;
-      // do_display      = 0;
-#ifdef ENABLE_SDL
+    } else if (!strcmp (*argv, "--show-devices") || !strcmp (*argv, "-sd")) {
+#if defined(ENABLE_OPENCL) || defined(ENABLE_CUDA)
+      show_gpu_config = 1;
+      gpu_used        = GPU_CAN_BE_USED;
+#else
+      warning (*argv, "ENABLE_OPENCL", "ENABLE_CUDA");
+#endif
+
     } else if (!strcmp (*argv, "--show-iterations") || !strcmp (*argv, "-si")) {
+#ifdef ENABLE_SDL
       graphics_toggle_display_iteration_number ();
+#else
+      warning (*argv, "ENABLE_SDL", NULL);
 #endif
-#ifdef ENABLE_SHA
     } else if (!strcmp (*argv, "--show-hash") || !strcmp (*argv, "-sh")) {
+#ifdef ENABLE_SHA
       show_sha256_signature = 1;
+#else
+      warning (*argv, "ENABLE_SHA", NULL);
 #endif
-    } else if (!strcmp (*argv, "--list-ocl-variants") ||
-               !strcmp (*argv, "-lov")) {
-      list_ocl_variants = 1;
-      opencl_used       = 1;
+    } else if (!strcmp (*argv, "--list-gpu-variants") ||
+               !strcmp (*argv, "-lgv")) {
+#if defined(ENABLE_OPENCL) || defined(ENABLE_CUDA)
+      list_gpu_variants = 1;
+      gpu_used          = GPU_CAN_BE_USED;
       do_display        = 0;
+#else
+      warning (*argv, "ENABLE_OPENCL", "ENABLE_CUDA");
+#endif
     } else if (!strcmp (*argv, "--first-touch") || !strcmp (*argv, "-ft")) {
       do_first_touch = 1;
     } else if (!strcmp (*argv, "--monitoring") || !strcmp (*argv, "-m")) {
 #ifndef ENABLE_SDL
-      fprintf (stderr, "Warning: cannot monitor execution when ENABLE_SDL is "
-                       "not defined\n");
+      warning (*argv, "ENABLE_SDL", NULL);
 #else
       do_gmonitor       = 1;
 #endif
     } else if (!strcmp (*argv, "--trace") || !strcmp (*argv, "-t")) {
 #ifndef ENABLE_TRACE
-      fprintf (
-          stderr,
-          "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
+      warning (*argv, "ENABLE_TRACE", NULL);
 #else
       trace_may_be_used = 1;
 #endif
-    } else if (!strcmp (*argv, "--cache") || !strcmp (*argv, "-c")) {
+    } else if (!strcmp (*argv, "--counters") || !strcmp (*argv, "-c")) {
 #ifndef ENABLE_PAPI
-      fprintf (
-          stderr,
-          "Warning: cannot retrieve cache usage counters if ENABLE_PAPI is "
-          "not defined.\n");
+      warning (*argv, "ENABLE_PAPI", NULL);
 #else
-      do_cache          = 1;
+
+      do_cache       = 1;
       int perf_event = open ("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
       if (perf_event == -1) {
-        fprintf (stdout,
-                 "Couldn't open /proc/sys/kernel/perf_event_paranoid.\nCache "
-                 "recording aborted.\n");
+        fprintf (
+            stdout,
+            "Couldn't open /proc/sys/kernel/perf_event_paranoid.\nPerf counter "
+            "recording aborted.\n");
         do_cache = 0;
       } else {
         char perf_event_value[2];
         if (read (perf_event, &perf_event_value, 2 * sizeof (char)) <= 0) {
-          fprintf (stdout, "Couldn't read value in "
-                           "/proc/sys/kernel/perf_event_paranoid.\nCache "
-                           "recording aborted.\n");
+          fprintf (stdout,
+                   "Couldn't read value in "
+                   "/proc/sys/kernel/perf_event_paranoid.\nPerf counter "
+                   "recording aborted.\n");
           do_cache = 0;
         } else {
           if (atoi (perf_event_value) > 0) {
             fprintf (stdout,
-                     "Warning: PAPI cache record may crash. Please "
+                     "Warning: PAPI perf counter record may crash. Please "
                      "set /proc/sys/kernel/perf_event_paranoid to 0 (or -1) "
-                     "or run as root.\nCache recording aborted.\n");
+                     "or run as root.\nPerf counter recording aborted.\n");
             do_cache = 0;
           }
         }
       }
 #endif
     } else if (!strcmp (*argv, "--trace-iter") || !strcmp (*argv, "-ti")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: starting iteration is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: starting iteration is missing");
       (*argc)--;
       argv++;
 #ifndef ENABLE_TRACE
-      fprintf (
-          stderr,
-          "Warning: cannot generate trace if ENABLE_TRACE is not defined\n");
+      warning (*argv, "ENABLE_TRACE", NULL);
 #else
       trace_starting_iteration = atoi (*argv);
       trace_may_be_used        = 1;
 #endif
     } else if (!strcmp (*argv, "--thumbnails") || !strcmp (*argv, "-tn")) {
 #ifndef ENABLE_SDL
-      fprintf (stderr, "Warning: cannot generate thumbnails when ENABLE_SDL is "
-                       "not defined\n");
+      warning (*argv, "ENABLE_SDL", NULL);
 #else
       do_thumbs                = 1;
 #endif
     } else if (!strcmp (*argv, "--thumbnails-iter") ||
                !strcmp (*argv, "-tni")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: starting iteration is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: starting iteration is missing");
       (*argc)--;
       argv++;
 #ifndef ENABLE_SDL
-      fprintf (stderr, "Warning: cannot generate thumbnails when ENABLE_SDL is "
-                       "not defined\n");
+      warning (*argv, "ENABLE_SDL", NULL);
 #else
       trace_starting_iteration = atoi (*argv);
       do_thumbs                = 1;
 #endif
     } else if (!strcmp (*argv, "--dump") || !strcmp (*argv, "-du")) {
 #ifndef ENABLE_SDL
-      fprintf (stderr, "Warning: cannot dump image to disk when ENABLE_SDL is "
-                       "not defined\n");
+      warning (*argv, "ENABLE_SDL", NULL);
 #else
       do_dump                  = 1;
 #endif
     } else if (!strcmp (*argv, "--arg") || !strcmp (*argv, "-a")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: parameter string is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: parameter string is missing");
       (*argc)--;
       argv++;
       draw_param = *argv;
     } else if (!strcmp (*argv, "--label") || !strcmp (*argv, "-lb")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: parameter string is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: parameter string is missing");
       (*argc)--;
       argv++;
       snprintf (trace_label, MAX_LABEL, "%s", *argv);
     } else if (!strcmp (*argv, "--mpirun") || !strcmp (*argv, "-mpi")) {
 #ifndef ENABLE_MPI
-      fprintf (stderr, "Warning: --mpi has no effect when ENABLE_MPI "
-                       "is not defined\n");
+      warning (*argv, "ENABLE_MPI", NULL);
       (*argc)--;
       argv++;
 #else
-      if (*argc == 1) {
-        fprintf (stderr, "Error: parameter string is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: parameter string is missing");
       (*argc)--;
       argv++;
       easypap_mpirun = 1;
 #endif
-    } else if (!strcmp (*argv, "--ocl") || !strcmp (*argv, "-o")) {
-      opencl_used = 1;
+    } else if (!strcmp (*argv, "--gpu") || !strcmp (*argv, "-g")) {
+#if defined(ENABLE_OPENCL) || defined(ENABLE_CUDA)
+      gpu_used = GPU_CAN_BE_USED;
+#else
+      warning (*argv, "ENABLE_OPENCL", "ENABLE_CUDA");
+#endif
     } else if (!strcmp (*argv, "--kernel") || !strcmp (*argv, "-k")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: kernel name is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: kernel name is missing");
       (*argc)--;
       argv++;
       kernel_name = *argv;
     } else if (!strcmp (*argv, "--with-tile") || !strcmp (*argv, "-wt")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: tile function suffix is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: tile function suffix is missing");
       (*argc)--;
       argv++;
       tile_name = *argv;
     } else if (!strcmp (*argv, "--load-image") || !strcmp (*argv, "-l")) {
 #ifndef ENABLE_SDL
-      fprintf (stderr,
-               "Warning: Cannot load image when ENABLE_SDL is not defined\n");
+      warning (*argv, "ENABLE_SDL", NULL);
       (*argc)--;
       argv++;
 #else
-      if (*argc == 1) {
-        fprintf (stderr, "Error: filename is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: filename is missing");
       (*argc)--;
       argv++;
       easypap_image_file = *argv;
 #endif
     } else if (!strcmp (*argv, "--size") || !strcmp (*argv, "-s")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: DIM is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: DIM is missing");
       (*argc)--;
       argv++;
       DIM = atoi (*argv);
     } else if (!strcmp (*argv, "--nb-tiles") || !strcmp (*argv, "-nt")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: number of tiles is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: number of tiles is missing");
       (*argc)--;
       argv++;
       NB_TILES_X = atoi (*argv);
       NB_TILES_Y = NB_TILES_X;
     } else if (!strcmp (*argv, "--tile-width") || !strcmp (*argv, "-tw")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: tile width is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: tile width is missing");
       (*argc)--;
       argv++;
       TILE_W = atoi (*argv);
     } else if (!strcmp (*argv, "--tile-height") || !strcmp (*argv, "-th")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: tile height is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: tile height is missing");
       (*argc)--;
       argv++;
       TILE_H = atoi (*argv);
     } else if (!strcmp (*argv, "--tile-size") || !strcmp (*argv, "-ts")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: tile size is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: tile size is missing");
       (*argc)--;
       argv++;
       TILE_W = atoi (*argv);
       TILE_H = TILE_W;
     } else if (!strcmp (*argv, "--variant") || !strcmp (*argv, "-v")) {
-
-      if (*argc == 1) {
-        fprintf (stderr, "Error: variant name is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: variant name is missing");
       (*argc)--;
       argv++;
       variant_name = *argv;
     } else if (!strcmp (*argv, "--iterations") || !strcmp (*argv, "-i")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: number of iterations is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: number of iterations is missing");
       (*argc)--;
       argv++;
       max_iter = atoi (*argv);
     } else if (!strcmp (*argv, "--refresh-rate") || !strcmp (*argv, "-r")) {
 #ifndef ENABLE_SDL
-      fprintf (stderr, "Warning: --refresh rate has no effect when ENABLE_SDL "
-                       "is not defined\n");
+      warning (*argv, "ENABLE_SDL", NULL);
       (*argc)--;
       argv++;
 #else
-      if (*argc == 1) {
-        fprintf (stderr, "Error: refresh rate is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: refresh rate is missing");
       (*argc)--;
       argv++;
       refresh_rate = atoi (*argv);
 #endif
     } else if (!strcmp (*argv, "--debug-flags") || !strcmp (*argv, "-d")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: debug flags list is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: debug flags list is missing");
       (*argc)--;
       argv++;
 
       debug_init (*argv);
     } else if (!strcmp (*argv, "--output-file") || !strcmp (*argv, "-of")) {
-      if (*argc == 1) {
-        fprintf (stderr, "Error: filename is missing\n");
-        usage (1);
-      }
+      if (*argc == 1)
+        usage_error ("Error: filename is missing");
       (*argc)--;
       argv++;
       output_file = *argv;

@@ -37,12 +37,12 @@ void trace_record_init (char *file, unsigned cpu, unsigned gpu, unsigned dim,
     exit_with_error ("fut_setup");
 
   // We use 2 lanes per GPU : one for computations, the other for data transfers
-  FUT_PROBE2 (0x1, TRACE_NB_THREADS, cpu, gpu * 2);
-  FUT_PROBE1 (0x1, TRACE_DIM, dim);
+  FUT_DO_PROBE2 (TRACE_NB_THREADS, cpu, gpu * 2);
+  FUT_DO_PROBE1 (TRACE_DIM, dim);
   if (label != NULL)
-    FUT_PROBESTR (0x1, TRACE_LABEL, label);
-  FUT_PROBE1 (0x1, TRACE_FIRST_ITER, starting_iteration);
-  FUT_PROBE1 (0x1, TRACE_DO_CACHE, is_cache_enabled);
+    FUT_DO_PROBESTR (TRACE_LABEL, label);
+  FUT_DO_PROBE1 (TRACE_FIRST_ITER, starting_iteration);
+  FUT_DO_PROBE1 (TRACE_DO_CACHE, is_cache_enabled);
 
   cache_activated = is_cache_enabled;
 }
@@ -70,11 +70,11 @@ void trace_record_declare_task_ids (char *task_ids[])
     }
   }
 
-  FUT_PROBE1 (0x1, TRACE_TASKID_COUNT, task_ids_count);
-  FUT_PROBESTR (0x1, TRACE_TASKID, "anonymous"); // task id 0
+  FUT_DO_PROBE1 (TRACE_TASKID_COUNT, task_ids_count);
+  FUT_DO_PROBESTR (TRACE_TASKID, "anonymous"); // task id 0
   if (task_ids != NULL)
     for (int i = 0; task_ids[i] != NULL; i++)
-      FUT_PROBESTR (0x1, TRACE_TASKID, task_ids[i]); // task id i + 1
+      FUT_DO_PROBESTR (TRACE_TASKID, task_ids[i]); // task id i + 1
 }
 
 void trace_record_commit_task_ids (void)
@@ -83,19 +83,19 @@ void trace_record_commit_task_ids (void)
     trace_record_declare_task_ids (NULL);
 }
 
-void __trace_record_start_iteration (long time)
+void __trace_record_start_iteration ()
 {
-  FUT_PROBE1 (0x1, TRACE_BEGIN_ITER, time);
+  FUT_DO_PROBE0 (TRACE_BEGIN_ITER);
 }
 
-void __trace_record_end_iteration (long time)
+void __trace_record_end_iteration ()
 {
-  FUT_PROBE1 (0x1, TRACE_END_ITER, time);
+  FUT_DO_PROBE0 (TRACE_END_ITER);
 }
 
 void __trace_record_start_tile (long time, unsigned cpu)
 {
-  FUT_PROBE2 (0x1, TRACE_BEGIN_TILE, time, cpu);
+  FUT_DO_PROBE2 (TRACE_BEGIN_TILE, time, cpu);
 }
 
 void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
@@ -110,11 +110,28 @@ void __trace_record_end_tile (long time, unsigned cpu, unsigned x, unsigned y,
             ? ". Probable cause: monitoring_declare_task_ids not called"
             : "");
   if (cache_activated)
-    FUT_PROBE11 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h,
-                 TASK_COMBINE (task_type, task_id), counters[0],
-                 counters[1], counters[2],
-                 counters[3]);
+    FUT_DO_PROBE9 (TRACE_END_TILE, time, cpu, x, y, w, h,
+                   INT_COMBINE (task_type, task_id), counters[0], counters[1]);
   else
-    FUT_PROBE7 (0x1, TRACE_END_TILE, time, cpu, x, y, w, h,
-                TASK_COMBINE (task_type, task_id));
+    FUT_DO_PROBE7 (TRACE_END_TILE, time, cpu, x, y, w, h,
+                   INT_COMBINE (task_type, task_id));
+}
+
+void __trace_record_tile (long start_time, unsigned cpu, unsigned x, unsigned y,
+                          unsigned w, unsigned h, int task_type, int task_id,
+                          int64_t *counters)
+{
+  if (task_id >= task_ids_count)
+    exit_with_error (
+        "monitoring_end_tile: task id %d is too large (should < %d)%s\n",
+        task_id, task_ids_count,
+        (task_ids_count == 1)
+            ? ". Probable cause: monitoring_declare_task_ids not called"
+            : "");
+  if (cache_activated)
+    FUT_DO_PROBE7 (TRACE_TILE, start_time, cpu, INT_COMBINE(x, y), INT_COMBINE(w, h),
+                   INT_COMBINE (task_type, task_id), counters[0], counters[1]);
+  else
+    FUT_DO_PROBE5 (TRACE_TILE, start_time, cpu, INT_COMBINE(x, y), INT_COMBINE(w, h),
+                   INT_COMBINE (task_type, task_id));
 }

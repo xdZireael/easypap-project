@@ -15,6 +15,7 @@
 #include "graphics.h"
 #include "time_macros.h"
 #include "trace_common.h"
+#include "gpu.h"
 
 #define HISTOGRAM_WIDTH 256
 #define HISTOGRAM_HEIGHT 100
@@ -262,7 +263,10 @@ void cpustat_init (int x, int y)
 */
 
   NBCORES = easypap_requested_number_of_threads ();
-  NBGPUS  = easypap_number_of_gpus ();
+  if (gpu_used)
+    NBGPUS  = easypap_number_of_gpus();
+
+
 
   cpu_stats = malloc ((NBCORES + NBGPUS) * sizeof (cpu_stat_t));
 
@@ -322,10 +326,6 @@ void cpustat_start_work (long now, int who)
   cpu_stats[who].cumulated_idle += (now - cpu_stats[who].end_time);
   cpu_stats[who].nb_tiles++;
   cpu_stats[who].start_time = now;
-
-  if (who == NBCORES) // GPU
-    PRINT_DEBUG ('m', "CPU %d starts a new tile (was idle during %ld)\n", who,
-                 (now - cpu_stats[who].end_time));
 }
 
 long cpustat_finish_work (long now, int who)
@@ -336,9 +336,6 @@ long cpustat_finish_work (long now, int who)
   cpu_stats[who].cumulated_work += duration;
   cpu_stats[who].end_time = now;
 
-  if (who == NBCORES) // GPU
-    PRINT_DEBUG ('m', "CPU %d completes its tile (worked during %ld)\n", who,
-                 duration);
   return duration;
 }
 

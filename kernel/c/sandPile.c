@@ -69,7 +69,7 @@ void asandPile_refresh_img()
 static inline void set_cell (int y, int x, unsigned v)
 {
   atable (y, x) = v;
-  if (opencl_used)
+  if (gpu_used)
     cur_img (y, x) = v;
 }
 

@@ -19,8 +19,9 @@ extern unsigned gpu_index[];
 #define TRACE_TASKID       0x10A
 #define TRACE_FIRST_ITER   0x10B
 #define TRACE_DO_CACHE     0x10C
+#define TRACE_TILE         0x10D
 
-#define DEFAULT_EZV_TRACE_DIR "traces/data"
+#define DEFAULT_EZV_TRACE_DIR "data/traces"
 #define DEFAULT_EZV_TRACE_BASE "ezv_trace_current"
 #define DEFAULT_EZV_TRACE_EXT  ".evt"
 #define DEFAULT_EZV_TRACE_FILE DEFAULT_EZV_TRACE_BASE DEFAULT_EZV_TRACE_EXT
@@ -32,11 +33,9 @@ typedef enum {
     TASK_TYPE_READ
 } task_type_t;
 
-#define TASK_TYPE_BITS 2U
-
-#define TASK_COMBINE(ttype,tid) ((unsigned)(ttype) | ((unsigned)(tid) << TASK_TYPE_BITS))
-#define TASK_EXTRACT_TID(v)     ((unsigned)(v) >> TASK_TYPE_BITS)
-#define TASK_EXTRACT_TTYPE(v)   ((unsigned)(v) & ((1 << TASK_TYPE_BITS) - 1))
+#define INT_COMBINE(low,high) ((unsigned long)(low) | ((unsigned long)(high) << 32))
+#define INT_EXTRACT_HIGH(v)   ((unsigned long)(v) >> 32)
+#define INT_EXTRACT_LOW(v)   ((unsigned long)(v) & ((1UL << 32) - 1))
 
 
 #endif

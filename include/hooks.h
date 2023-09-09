@@ -5,6 +5,8 @@ typedef void (*void_func_t) (void);
 typedef unsigned (*int_func_t) (unsigned);
 typedef void (*draw_func_t) (char *);
 typedef int (*tile_func_t) (int, int, int, int);
+typedef void (*cuda_kernel_func_t)(unsigned *, unsigned *, unsigned);
+typedef void (*cuda_kernel_finish_func_t)(unsigned);
 
 extern draw_func_t the_config;
 extern void_func_t the_init;
@@ -14,7 +16,10 @@ extern void_func_t the_finalize;
 extern int_func_t the_compute;
 extern void_func_t the_refresh_img;
 extern void_func_t the_tile_check;
+extern cuda_kernel_func_t the_cuda_kernel;
+extern cuda_kernel_finish_func_t the_cuda_kernel_finish;
 
+void *bind_it (char *kernel, char *s, char *variant, int print_error);
 void *hooks_find_symbol (char *symbol);
 void hooks_establish_bindings (int silent);
 

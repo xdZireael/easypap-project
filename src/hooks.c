@@ -2,7 +2,8 @@
 #include "debug.h"
 #include "error.h"
 #include "global.h"
-#include "ocl.h"
+#include "monitoring.h"
+#include "gpu.h"
 
 #include <dlfcn.h>
 #include <stdio.h>
@@ -22,6 +23,8 @@ void_func_t the_finalize    = NULL;
 int_func_t the_compute      = NULL;
 void_func_t the_refresh_img = NULL;
 void_func_t the_tile_check  = NULL;
+cuda_kernel_func_t the_cuda_kernel = NULL;
+cuda_kernel_finish_func_t the_cuda_kernel_finish = NULL;
 
 static tile_func_t the_tile_func = NULL;
 
@@ -30,11 +33,16 @@ void *hooks_find_symbol (char *symbol)
   return dlsym (DLSYM_FLAG, symbol);
 }
 
-static void *bind_it (char *kernel, char *s, char *variant, int print_error)
+void *bind_it (char *kernel, char *s, char *variant, int print_error)
 {
   char buffer[1024];
   void *fun = NULL;
-  sprintf (buffer, "%s_%s_%s", kernel, s, variant);
+
+  if (s == NULL)
+    sprintf (buffer, "%s_%s", kernel, variant);
+  else
+    sprintf (buffer, "%s_%s_%s", kernel, s, variant);
+
   fun = hooks_find_symbol (buffer);
   if (fun != NULL)
     PRINT_DEBUG ('c', "Found [%s]\n", buffer);
@@ -116,15 +124,12 @@ static void *bind_tile (char *kernel)
 
 void hooks_establish_bindings (int silent)
 {
-  if (opencl_used) {
-    the_compute = bind_it (kernel_name, "invoke", variant_name, 0);
-    if (the_compute == NULL) {
-      the_compute = ocl_invoke_kernel_generic;
-      PRINT_DEBUG ('c', "Using generic [%s] OpenCL kernel launcher\n",
-                   "ocl_compute");
-    }
+
+  if (gpu_used) {
+    gpu_establish_bindings ();
   } else {
     the_compute = bind_it (kernel_name, "compute", variant_name, 2);
+    the_first_touch = bind_it (kernel_name, "ft", variant_name, do_first_touch);
   }
 
   the_config      = bind_it (kernel_name, "config", variant_name, 0);
@@ -132,10 +137,6 @@ void hooks_establish_bindings (int silent)
   the_draw        = bind_it (kernel_name, "draw", variant_name, 0);
   the_finalize    = bind_it (kernel_name, "finalize", variant_name, 0);
   the_refresh_img = bind_it (kernel_name, "refresh_img", variant_name, 0);
-
-  if (!opencl_used) {
-    the_first_touch = bind_it (kernel_name, "ft", variant_name, do_first_touch);
-  }
 
   the_tile_func  = bind_tile (kernel_name);
   the_tile_check = bind_it (kernel_name, "tile_check", tile_name, 0);
@@ -170,11 +171,11 @@ int do_tile (int x, int y, int width, int height, int who)
   if (the_tile_func == NULL)
     exit_with_error ("No appropriate do_tile function found");
 
-  monitoring_start_tile (who);
+  uint64_t clock = monitoring_start_tile (who);
 
   int r = the_tile_func (x, y, width, height);
 
-  monitoring_end_tile (x, y, width, height, who);
+  monitoring_end_tile (clock, x, y, width, height, who);
 
   return r;
 }

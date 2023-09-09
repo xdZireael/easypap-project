@@ -86,16 +86,17 @@ unsigned pixelize_compute_seq (unsigned nb_iter)
   return 0;
 }
 
+#ifdef ENABLE_OPENCL
 
 ///////////////////////////// OpenCL big variant (ocl_big)
 
 unsigned pixelize_invoke_ocl (unsigned nb_iter)
 {
   size_t global[2] = {GPU_SIZE_X, GPU_SIZE_Y};
-  size_t local[2]  = {GPU_TILE_W, GPU_TILE_H};
+  size_t local[2]  = {TILE_W, TILE_H};
   cl_int err;
 
-  monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
+  uint64_t clock = monitoring_start_tile (easypap_gpu_lane (TASK_TYPE_COMPUTE));
 
   for (unsigned it = 1; it <= nb_iter; it++) {
 
@@ -112,7 +113,7 @@ unsigned pixelize_invoke_ocl (unsigned nb_iter)
 
   clFinish (queue);
 
-  monitoring_end_tile (0, 0, DIM, DIM, easypap_gpu_lane (TASK_TYPE_COMPUTE));
+  monitoring_end_tile (clock, 0, 0, DIM, DIM, easypap_gpu_lane (TASK_TYPE_COMPUTE));
 
   return 0;
 }
@@ -127,11 +128,13 @@ void pixelize_config_ocl (char *param)
 
 void pixelize_init_ocl (void)
 {
-  if (GPU_TILE_W != GPU_TILE_H)
-    exit_with_error ("Tiles should have a square shape (%d != %d)", GPU_TILE_W,
-                     GPU_TILE_H);
+  if (TILE_W != TILE_H)
+    exit_with_error ("Tiles should have a square shape (%d != %d)", TILE_W,
+                     TILE_H);
 
-  if (GPU_TILE_W < PIX_BLOC || (GPU_TILE_W % PIX_BLOC != 0))
+  if (TILE_W < PIX_BLOC || (TILE_W % PIX_BLOC != 0))
     exit_with_error ("Tile size (%d) must be a multiple of PIX_BLOC (%d)",
-                     GPU_TILE_W, PIX_BLOC);
+                     TILE_W, PIX_BLOC);
 }
+
+#endif
