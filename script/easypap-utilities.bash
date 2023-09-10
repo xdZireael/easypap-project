@@ -92,7 +92,7 @@ _easypap_draw_funcs()
         set none
     fi
 
-    for p in "" "mipp_" "cuda_" ; do
+    for p in "${KERNEL_PREFIX[@]}" ; do
         file=obj/$p$1.o
         if [ -f $file ]; then
             obj="$obj $file"
@@ -122,7 +122,7 @@ _easypap_tile_funcs()
         set none
     fi
 
-    for p in "" "mipp_" "cuda_" ; do
+    for p in "${KERNEL_PREFIX[@]}" ; do
         file=obj/$p$1.o
         if [ -f $file ]; then
             obj="$obj $file"
