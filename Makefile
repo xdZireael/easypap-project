@@ -14,7 +14,7 @@ ENABLE_TRACE		= 1
 ENABLE_MPI			= 1
 ENABLE_SHA			= 1
 ENABLE_OPENCL		= 1
-#ENABLE_MIPP			= 1
+ENABLE_MIPP			= 1
 #ENABLE_CUDA			= 1
 #ENABLE_PAPI			= 1
 
@@ -35,7 +35,7 @@ CFLAGS		+= -Wall -Wno-unused-function
 CFLAGS		+= -I./include -I./traces/include
 LDLIBS		+= -lm
 
-CXXFLAGS	:= $(CFLAGS) -std=c++11
+CXXFLAGS	:= -std=c++11
 
 OS_NAME		:= $(shell uname -s | tr a-z A-Z)
 ARCH		:= $(shell uname -m | tr a-z A-Z)
@@ -207,6 +207,7 @@ CFLAGS		+= $(shell pkg-config --cflags $(PACKAGES))
 LDFLAGS		+= $(shell pkg-config --libs-only-L $(PACKAGES))
 LDLIBS		+= $(shell pkg-config --libs-only-l $(PACKAGES))
 
+CXXFLAGS	+= $(CFLAGS)
 
 $(ALL_OBJECTS): $(MAKEFILES)
 
