@@ -3,7 +3,7 @@
 rm -rf build
 
 # Configure
-CC=${CC:-gcc} CXX=${CXX:-g++} cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release || exit $?
+CC=${CC:-gcc} CXX=${CXX:-g++} cmake -S . -B build -DCMAKE_BUILD_TYPE=Release || exit $?
 
 # Build all
 cmake --build build --parallel || exit $?

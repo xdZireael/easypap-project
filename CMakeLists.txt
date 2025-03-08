@@ -12,7 +12,7 @@ set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
 # set -fPIC flag when building shared libraries
 set(CMAKE_POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
 
-# options
+# EasyPAP options
 option(ENABLE_SCOTCH "Use Scotch library"           ON)
 option(ENABLE_TRACE "Generate execution traces"     ON)
 option(ENABLE_OPENCL "Compile with OpenCL"          ON)
@@ -21,8 +21,11 @@ option(ENABLE_SHA "Use SHA Hash library"            ON)
 option(ENABLE_VECTO "Enable explicit vectorization" ON)
 option(ENABLE_MPI "Compile with MPI"                OFF)
 option(ENABLE_MIPP "Compile with MIPP"              OFF)
-# Turn OFF this option to only prepare for ezv and ezm installation
+# Turn OFF to only prepare for ezv and ezm installation
 option(CONFIGURE_EASYPAP "Configure Easypap"        ON)
+
+# General options
+option(BUILD_SHARED_LIBS "Build shared libraries"   ON)
 
 # Add the path of the custom module
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
