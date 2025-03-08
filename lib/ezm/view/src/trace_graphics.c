@@ -4,8 +4,8 @@
 #include "ezv_sdl_gl.h"
 #include "trace_colors.h"
 
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL_image.h>
+#include <SDL_ttf.h>
 #include <fcntl.h>
 #include <fut.h>
 #include <fxt-tools.h>
@@ -170,9 +170,15 @@ static void find_shared_directories (void)
   char *pf = stpcpy (easyview_font_dir, easyview_img_dir);
   char *pv = stpcpy (easyview_ezv_dir, easyview_img_dir);
 
-  strcpy (pi, "../share/img/");
-  strcpy (pf, "../share/fonts/");
+#ifdef INSTALL_DIR // compiled with CMAKE
+  strcpy (pi, "../share/ezm/img/");
+  strcpy (pf, "../share/ezm/fonts/");
+  strcpy (pv, "../");
+#else
+  strcpy (pi, "../share/ezm/img/");
+  strcpy (pf, "../share/ezm/fonts/");
   strcpy (pv, "../../../ezv");
+#endif
 }
 
 static SDL_Surface *load_img (const char *filename)
@@ -1365,6 +1371,7 @@ static void trace_graphics_display_trace (unsigned _t,
   uint64_t mouse_time = 0;
   unsigned mouse_iter = 0;
   perfcounter_array_t cumulated_cache_stat[max_cores];
+  unsigned mosaic_tile_displayed = 0;
 
   bzero (to_be_emphasized, max_cores * sizeof (trace_task_t *));
   if (tr->has_cache_data)
@@ -1518,13 +1525,15 @@ static void trace_graphics_display_trace (unsigned _t,
             get_raw_rect (t, &r);
             if (point_in_rect (&mouse_pick, &r)) {
               // Mouse in right window matches the footprint of current task
-              if (easyview_mode == EASYVIEW_MODE_3D_MESHES)
-                ezv_set_cpu_color_1D (ctx[_t], t->x, t->w,
-                                      ezv_rgba (0xFF, 0xFF, 0xFF, 0xC0));
-              else
-                ezv_set_cpu_color_2D (ctx[_t], t->x, t->w, t->y, t->h,
-                                      ezv_rgba (0xFF, 0xFF, 0xFF, 0xC0));
-
+              if (!mosaic_tile_displayed) {
+                if (easyview_mode == EASYVIEW_MODE_3D_MESHES)
+                  ezv_set_cpu_color_1D (ctx[_t], t->x, t->w,
+                                        ezv_rgba (0xFF, 0xFF, 0xFF, 0xC0));
+                else
+                  ezv_set_cpu_color_2D (ctx[_t], t->x, t->w, t->y, t->h,
+                                        ezv_rgba (0xFF, 0xFF, 0xFF, 0xC0));
+                mosaic_tile_displayed = 1;
+              }
               // Display task a little bigger!
               magnify (&dst);
               col = TRACE_MAX_COLORS;
@@ -2221,7 +2230,7 @@ void trace_graphics_init (unsigned width, unsigned height)
 
   SDL_SetRenderDrawBlendMode (renderer, SDL_BLENDMODE_BLEND);
 
-  ezv_init (easyview_ezv_dir);
+  _ezv_init (easyview_ezv_dir);
 
   if (easyview_mode == EASYVIEW_MODE_3D_MESHES) {
     mesh3d_obj_init (&mesh);

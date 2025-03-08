@@ -1,6 +1,11 @@
 #ifndef ARCH_FLAGS_IS_DEF
 #define ARCH_FLAGS_IS_DEF
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #include <stdint.h>
 
 #define IS_LITTLE_ENDIAN                                                       \
@@ -37,5 +42,10 @@
 #endif
 
 void arch_flags_print (void);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

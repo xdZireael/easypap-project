@@ -1,5 +1,4 @@
 
-#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -54,7 +53,7 @@ static void process_events (void)
 
 int main (int argc, char *argv[])
 {
-  ezv_init (NULL);
+  ezv_init ();
 
   mesh3d_obj_init (&mesh);
 

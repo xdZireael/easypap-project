@@ -166,7 +166,7 @@ int main (int argc, char *argv[])
     argv++;
   }
 
-  ezm_init (NULL, do_trace ? EZM_NO_DISPLAY : 0);
+  ezm_init (do_trace ? EZM_NO_DISPLAY : 0);
 
   // Initialize mesh
   mesh3d_obj_init (&mesh);

@@ -8,6 +8,7 @@
 #include "ezm.h"
 #include "ezp_ctx.h"
 #include "global.h"
+#include "private_glob.h"
 #include "img_data.h"
 #include "mesh_data.h"
 #include "monitoring.h"
@@ -52,7 +53,7 @@ static void set_default_trace_label (void)
 
 void ezp_monitoring_init (unsigned nb_cpus, unsigned nb_gpus)
 {
-  ezm_init ("lib/ezm", do_display ? 0 : EZM_NO_DISPLAY);
+  ezm_init (do_display ? 0 : EZM_NO_DISPLAY);
 
   ezp_monitor = ezm_recorder_create (nb_cpus, nb_gpus);
 

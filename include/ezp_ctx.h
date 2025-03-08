@@ -1,6 +1,10 @@
 #ifndef EZP_CTX_H
 #define EZP_CTX_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 #include "ezv.h"
 
@@ -16,5 +20,10 @@ void ezp_ctx_ithud_set (unsigned iter);
 
 void ezp_ctx_coord_next (ezv_ctx_type_t ctx_type, unsigned ctx_no, int *xwin, int *ywin);
 
+void ezp_take_screenshot (const char *filename);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

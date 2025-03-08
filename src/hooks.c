@@ -1,14 +1,19 @@
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "hooks.h"
 #include "debug.h"
 #include "error.h"
 #include "global.h"
+#include "private_glob.h"
 #include "gpu.h"
 #include "mesh_data.h"
 #include "monitoring.h"
-
-#include <dlfcn.h>
-#include <stdio.h>
-#include <stdlib.h>
+#ifdef ENABLE_CUDA
+#include "nvidia_cuda.h"
+#endif
 
 #ifdef __APPLE__
 #define DLSYM_FLAG RTLD_SELF

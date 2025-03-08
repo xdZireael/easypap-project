@@ -7,14 +7,13 @@ default: $(PROGRAM)
 
 ########## Config Section ##########
 
-ENABLE_MONITORING	= 1
 ENABLE_VECTO		= 1
 ENABLE_TRACE		= 1
 ENABLE_MPI			= 1
 ENABLE_SHA			= 1
-ENABLE_OPENCL		= 1
-#ENABLE_MIPP			= 1
-#ENABLE_CUDA			= 1
+#ENABLE_OPENCL		= 1
+ENABLE_MIPP			= 1
+ENABLE_CUDA			= 1
 #ENABLE_PAPI			= 1
 
 ###### Customization Section #######
@@ -36,6 +35,7 @@ CFLAGS			+= -Wall -Wno-unused-function
 
 CFLAGS			+= -I./include
 CUDA_CFLAGS		+= -I./include
+INTERNAL		:= -I./internal
 LDLIBS			+= -lm
 
 CXXFLAGS		:= -std=c++11
@@ -52,6 +52,9 @@ endif
 
 ifneq ($(ENABLE_OPENCL), 1)
 SOURCES			:= $(filter-out src/ocl.c src/mesh_mgpu_ocl.c src/ezp_ocl_event.c, $(SOURCES))
+ifneq ($(ENABLE_CUDA), 1)
+SOURCES			:= $(filter-out src/mesh_mgpu.c, $(SOURCES))
+endif
 endif
 
 ifneq ($(ENABLE_SHA), 1)
@@ -125,12 +128,6 @@ CFLAGS			+= -DENABLE_VECTO
 CUDA_CFLAGS		+= -DENABLE_VECTO
 endif
 
-# Monitoring
-ifeq ($(ENABLE_MONITORING), 1)
-CFLAGS			+= -DENABLE_MONITORING
-CUDA_CFLAGS		+= -DENABLE_MONITORING
-endif
-
 # OpenMP
 CFLAGS			+= -fopenmp
 LDFLAGS			+= -fopenmp
@@ -154,7 +151,6 @@ ifeq ($(OS_NAME), DARWIN)
 CFLAGS			+= -DGL_SILENCE_DEPRECATION
 LDLIBS			+= -framework OpenGL
 else
-CFLAGS			+= -DUSE_GLAD
 LDLIBS			+= -lGL
 endif
 
@@ -209,6 +205,9 @@ endif
 # cglm
 PACKAGES		+= cglm
 
+# cglm is used as a header-only package
+L_PACKAGES	:= $(filter-out cglm, $(PACKAGES))
+
 # Query CFLAGS and LDLIBS for all packages
 PKG_CHECK		:= $(shell if pkg-config --print-errors --exists $(PACKAGES); then echo 0; else echo 1; fi)
 
@@ -218,14 +217,14 @@ $(error Installation problem: missing package)
 endif
 
 CFLAGS			+= $(shell pkg-config --cflags $(PACKAGES))
-LDFLAGS			+= $(shell pkg-config --libs-only-L $(PACKAGES))
-LDLIBS			+= $(shell pkg-config --libs-only-l $(PACKAGES))
+LDFLAGS			+= $(shell pkg-config --libs-only-L $(L_PACKAGES))
+LDLIBS			+= $(shell pkg-config --libs-only-l $(L_PACKAGES))
 
 # EZV lib
 EZV_DIR			:= ./lib/ezv
 EZV_LIB 		:= $(EZV_DIR)/lib/libezv.a
 LDFLAGS			+= -L$(EZV_DIR)/lib
-LDLIBS			+= -lezv -lscotch
+LDLIBS			+= -lezv -lscotch -lscotcherr
 CFLAGS			+= -I$(EZV_DIR)/include
 CUDA_CFLAGS		+= -I$(EZV_DIR)/include
 
@@ -254,7 +253,7 @@ $(PROGRAM): $(ALL_OBJECTS) $(EZV_LIB) $(EZM_LIB)
 	$(LD) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 $(OBJECTS): obj/%.o: src/%.c
-	$(CC) -o $@ $(CFLAGS) -c $<
+	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -c $<
 
 $(K_OBJECTS): obj/%.o: kernel/c/%.c
 	$(CC) -o $@ $(CFLAGS) -c $<
@@ -272,19 +271,17 @@ $(L_GEN): obj/%.c: src/%.l
 
 ifeq ($(ENABLE_CUDA), 1)
 $(CUDA_OBJECTS): obj/%.o: src/%.cu
-	nvcc -o $@ $(CUDA_CFLAGS) -c $<
+	nvcc -o $@ $(CUDA_CFLAGS) $(INTERNAL) -c $<
 
 $(CUDA_K_OBJECTS): obj/cuda_%.o: kernel/cuda/%.cu
 	nvcc -o $@ $(CUDA_CFLAGS) -c $<
 endif
 
-.PHONY: depend
-depend: $(ALL_DEPENDS)
 
 $(ALL_DEPENDS): $(MAKEFILES)
 
 $(DEPENDS): deps/%.d: src/%.c
-	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
+	$(CC) $(CFLAGS) $(INTERNAL) -MM -MT "deps/$*.d obj/$*.o" $< > $@
 
 $(K_DEPENDS): deps/%.d: kernel/c/%.c
 	$(CC) $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
@@ -302,7 +299,7 @@ $(L_DEPENDS): deps/%.d: obj/%.c
 
 ifeq ($(ENABLE_CUDA), 1)
 $(CUDA_DEPENDS): deps/%.d: src/%.cu
-	nvcc $(CUDA_CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $< > $@
+	nvcc $(CUDA_CFLAGS) $(INTERNAL) -MM -MT "deps/$*.d obj/$*.o" $< > $@
 
 $(CUDA_K_DEPENDS): deps/cuda_%.d: kernel/cuda/%.cu
 	nvcc $(CUDA_CFLAGS) -MM -MT "deps/cuda_$*.d obj/cuda_$*.o" $< > $@

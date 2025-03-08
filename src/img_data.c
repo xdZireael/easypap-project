@@ -11,9 +11,13 @@
 #include "ezp_ctx.h"
 #include "ezv_event.h"
 #include "global.h"
+#include "private_glob.h"
 #include "gpu.h"
 #include "hooks.h"
 #include "img_data.h"
+#ifdef ENABLE_CUDA
+#include "nvidia_cuda.h"
+#endif
 
 #define THUMBNAILS_SIZE 512
 
@@ -98,8 +102,6 @@ void img_data_init (void)
   }
 
   check_tile_size ();
-
-  PRINT_DEBUG ('i', "Init phase 0 (IMG2D mode) : DIM = %d\n", DIM);
 }
 
 void img_data_alloc (void)
@@ -109,7 +111,7 @@ void img_data_alloc (void)
   image     = ezp_alloc (size);
   alt_image = ezp_alloc (size);
 
-  PRINT_DEBUG ('i', "Init phase 4: images allocated\n");
+  PRINT_DEBUG ('i', "Init phase 5: image buffers allocated\n");
 }
 
 void img_data_imgload (void)

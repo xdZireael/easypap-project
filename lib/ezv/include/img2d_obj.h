@@ -1,6 +1,9 @@
 #ifndef IMG2D_OBJ_H
 #define IMG2D_OBJ_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct
 {
@@ -20,5 +23,8 @@ void img2d_obj_store_resized (img2d_obj_t *img, char *filename, void *buffer,
                               unsigned width, unsigned height);
 void img2d_obj_load_resized (img2d_obj_t *img, char *filename, void *buffer);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif

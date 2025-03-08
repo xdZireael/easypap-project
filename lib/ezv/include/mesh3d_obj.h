@@ -1,6 +1,10 @@
 #ifndef MESH3D_OBJ_H
 #define MESH3D_OBJ_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum
 {
   MESH3D_TYPE_SURFACE,
@@ -17,7 +21,7 @@ typedef enum
 #define EDGE1 (1U << 2)
 #define EDGE2 (1U << 3)
 #define FRONTIER_SHIFT 4U
-#define FRONTIER_MASK 7U
+#define FRONTIER_MASK (7U << FRONTIER_SHIFT)
 #define FRONTIER(n) (1U << (FRONTIER_SHIFT + n))
 #define CELLNO_SHIFT 7U
 
@@ -94,5 +98,9 @@ void mesh3d_obj_get_bbox_of_cell (mesh3d_obj_t *mesh, unsigned cell,
                                   bbox_t *box);
 void mesh3d_obj_get_barycenter (mesh3d_obj_t *mesh, unsigned cell, float *bx,
                                 float *by, float *bz);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

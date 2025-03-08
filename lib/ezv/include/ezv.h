@@ -1,6 +1,10 @@
 #ifndef EZV_H
 #define EZV_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "ezv_hud.h"
 #include "ezv_palette.h"
 #include "ezv_rgba.h"
@@ -21,11 +25,18 @@ typedef enum
 #define EZV_ENABLE_HUD 4
 #define EZV_ENABLE_CLIPPING 8
 #define EZV_HIDE_WINDOW 16
+#define EZV_ENABLE_SCREENSHOT 32
 
 struct ezv_ctx_s;
 typedef struct ezv_ctx_s *ezv_ctx_t;
 
-void ezv_init (const char *prefix);
+#ifdef EZP_INSTALLED
+#define ezv_init() _ezv_init (NULL)
+#else
+#define ezv_init() _ezv_init (".")
+#endif
+
+void _ezv_init (const char *prefix);
 void ezv_load_opengl (void);
 unsigned ezv_get_max_display_height (void);
 
@@ -63,9 +74,14 @@ void ezv_render (ezv_ctx_t ctx[], unsigned nb_ctx);
 void ezv_reset_view (ezv_ctx_t ctx[], unsigned nb_ctx);
 void ezv_get_shareable_buffer_ids (ezv_ctx_t ctx, int buffer_ids[]);
 void ezv_set_data_brightness (ezv_ctx_t ctx, float brightness);
+void ezv_take_screenshot (ezv_ctx_t ctx, const char *filename);
 
 // Helpers
 void ezv_helper_ctx_next_coord (ezv_ctx_t ctx[], unsigned ctx_no,
                                 unsigned *xwin, unsigned *ywin);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

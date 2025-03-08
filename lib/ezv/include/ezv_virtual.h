@@ -1,6 +1,10 @@
 #ifndef EZV_VIRTUAL_H
 #define EZV_VIRTUAL_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ezv_ctx_s;
 typedef struct ezv_ctx_s *ezv_ctx_t;
 
@@ -22,6 +26,7 @@ typedef struct
   void (*move_zplane) (ezv_ctx_t ctx[], unsigned nb_ctx, float dz);
   void (*set_data_colors) (ezv_ctx_t ctx, void *values);
   unsigned (*get_linepitch) (ezv_ctx_t ctx);
+  void (*screenshot)(ezv_ctx_t ctx, const char *filename);
 } ezv_class_t;
 
 // Private virtual methods
@@ -36,5 +41,9 @@ int ezv_motion (ezv_ctx_t ctx[], unsigned nb_ctx, int dx, int dy,
                 unsigned wheel);
 void ezv_move_zplane (ezv_ctx_t ctx[], unsigned nb_ctx, float dz);
 unsigned ezv_get_linepitch (ezv_ctx_t ctx);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

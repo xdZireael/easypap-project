@@ -8,6 +8,7 @@
 #include "ezv.h"
 #include "ezv_sdl_gl.h"
 #include "global.h"
+#include "private_glob.h"
 
 static unsigned LARGE_WIN_WIDTH[2];
 static unsigned LARGE_WIN_HEIGHT[2];
@@ -23,7 +24,7 @@ static int iteration_hud = -1;
 
 void ezp_ctx_init (void)
 {
-  ezv_init ("lib/ezv");
+  _ezv_init ("lib/ezv");
 
   LARGE_WIN_WIDTH[EZV_CTX_TYPE_MESH3D]  = 1024;
   LARGE_WIN_HEIGHT[EZV_CTX_TYPE_MESH3D] = 768;
@@ -149,4 +150,9 @@ void ezp_ctx_ithud_toggle (void)
 void ezp_ctx_ithud_set (unsigned iter)
 {
   ezv_hud_set (ctx[0], iteration_hud, "It: %d", iter);
+}
+
+void ezp_take_screenshot (const char *filename)
+{
+  ezv_take_screenshot (ctx[0], filename);
 }

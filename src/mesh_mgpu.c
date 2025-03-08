@@ -1,11 +1,11 @@
 #include <string.h>
 
-#include "mesh_mgpu.h"
 #include "debug.h"
 #include "error.h"
 #include "ezp_alloc.h"
 #include "ezp_ctx.h"
 #include "mesh_data.h"
+#include "mesh_mgpu.h"
 
 #if defined(ENABLE_OPENCL)
 
@@ -23,7 +23,7 @@
 
 #endif
 
-// #define DESPERATE_DEBUG 1
+//#define DESPERATE_DEBUG 1
 
 typedef struct
 {
@@ -64,6 +64,8 @@ static unsigned halo = 1;
 mgpu_gpu_data_t gpu_data[MAX_GPU_DEVICES] = {
     {NULL, NULL, NULL, 0, 0, NULL, 0, 0},
     {NULL, NULL, NULL, 0, 0, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0},
 };
 
 static int mgpu_hud = -1;
@@ -90,8 +92,7 @@ int mesh_mgpu_offset_cells (int gpu)
 // Number of cells that must be computed on the device (including ghost cells)
 int mesh_mgpu_cells_to_compute (int gpu)
 {
-  return mesh_mgpu_info[gpu].nb_cells + mesh_mgpu_info[gpu].incoming_size -
-         mesh_mgpu_info[gpu].halo_size[halo - 1];
+  return mesh_mgpu_info[gpu].nb_cells + mesh_mgpu_info[gpu].incoming_size;
 }
 
 // Number of threads spawned the device for the compute kernel
@@ -99,8 +100,7 @@ int mesh_mgpu_cells_to_compute (int gpu)
 // neighbors_soa array
 int mesh_mgpu_nb_threads (int gpu)
 {
-  return ROUND_TO_MULTIPLE (
-      mesh_mgpu_info[gpu].nb_cells + mesh_mgpu_info[gpu].incoming_size, TILE);
+  return ROUND_TO_MULTIPLE (mesh_mgpu_cells_to_compute (gpu), TILE);
 }
 
 #define index2d(array, y, x) (*(&array[(y) * easypap_mesh_desc.nb_metap + (x)]))
@@ -112,10 +112,16 @@ int mesh_mgpu_nb_threads (int gpu)
 static void mesh_mgpu_display_stats (void)
 {
   for (int i = 0; i < easypap_mesh_desc.nb_metap; i++) {
-    PRINT_DEBUG ('m', "MP%d regroups partitions [%d..%d], outer partitions start from %d\n", i,
-            easypap_mesh_desc.metap_first_patch[i], easypap_mesh_desc.metap_first_patch[i + 1],
-            easypap_mesh_desc.metap_first_border_patch[i]);
+    PRINT_DEBUG (
+        'm',
+        "MP%d regroups partitions [%d..%d], outer partitions start from %d\n",
+        i, easypap_mesh_desc.metap_first_patch[i],
+        easypap_mesh_desc.metap_first_patch[i + 1],
+        easypap_mesh_desc.metap_first_border_patch[i]);
     PRINT_DEBUG ('m', "MP%d stores %d cells\n", i, mesh_mgpu_info[i].nb_cells);
+    PRINT_DEBUG ('m', "MP%d.part_offset = %d\n", i,
+                 mesh_mgpu_info[i].part_offset);
+
     PRINT_DEBUG (
         'm', "MP%d has a total of %d outgoing and %d incoming border cells\n",
         i, mesh_mgpu_info[i].outgoing_size, mesh_mgpu_info[i].incoming_size);
@@ -212,7 +218,7 @@ static void mesh_mgpu_build_info (void)
             uint32_t mask = 1U << n_mp;
             // And see if neighbor cell belongs to n_mp's halo
             // If so, we now belong to n_mp's halo too
-            if (border_info[easypap_mesh_desc.neighbors[ni]] &&
+            if ((border_info[easypap_mesh_desc.neighbors[ni]] & mask) &&
                 !(border_info[c] & mask) && !(binfo[c] & mask)) {
 #ifdef DESPERATE_DEBUG
               PRINT_DEBUG (
@@ -299,7 +305,7 @@ static void mesh_mgpu_build_info (void)
             uint32_t mask = 1U << n_mp;
             // And see if neighbor cell belongs to n_mp's halo
             // If so, we now belong to n_mp's halo too
-            if (border_info[easypap_mesh_desc.neighbors[ni]] &&
+            if ((border_info[easypap_mesh_desc.neighbors[ni]] & mask) &&
                 !(border_info[c] & mask) && !(binfo[c] & mask)) {
               binfo[c] |= mask;
               gpu_data[mp].outgoing_index[fill_ptr (mp, n_mp)++] =
@@ -337,8 +343,8 @@ static void mesh_mgpu_alloc_buffers (void)
     gpu_data[mp].outgoing_values =
         ezp_alloc (mesh_mgpu_info[mp].outgoing_size * sizeof (float));
 
-    mesh_mgpu_alloc_device_buffer (mp,
-        VOID_STAR_STAR_CAST & gpu_data[mp].outgoing_index_buffer,
+    mesh_mgpu_alloc_device_buffer (
+        mp, VOID_STAR_STAR_CAST & gpu_data[mp].outgoing_index_buffer,
         mesh_mgpu_info[mp].outgoing_size * sizeof (unsigned));
 
     // Transfer outgoing indexes
@@ -346,8 +352,15 @@ static void mesh_mgpu_alloc_buffers (void)
         mp, gpu_data[mp].outgoing_index_buffer, gpu_data[mp].outgoing_index,
         mesh_mgpu_info[mp].outgoing_size * sizeof (unsigned), 0);
 
-    mesh_mgpu_alloc_device_buffer (mp,
-        VOID_STAR_STAR_CAST & gpu_data[mp].outgoing_values_buffer,
+#ifdef DESPERATE_DEBUG
+    PRINT_DEBUG ('m', "MP%d: outgoing index buffer:\n", mp);
+    for (int i = 0; i < mesh_mgpu_info[mp].outgoing_size; i++)
+      PRINT_DEBUG ('m', "%d ", gpu_data[mp].outgoing_index[i]);
+    PRINT_DEBUG ('m', "\n");
+#endif
+
+    mesh_mgpu_alloc_device_buffer (
+        mp, VOID_STAR_STAR_CAST & gpu_data[mp].outgoing_values_buffer,
         mesh_mgpu_info[mp].outgoing_size * sizeof (float));
   }
 
@@ -361,8 +374,9 @@ static void mesh_mgpu_alloc_buffers (void)
       newpos[c] = -1;
 
     // shift main cells
-    for (int c = 0; c < mesh_mgpu_info[mp].nb_cells; c++)
+    for (int c = 0; c < mesh_mgpu_info[mp].nb_cells; c++) {
       newpos[mesh_mgpu_info[mp].part_offset + c] = c;
+    }
 
     // locate borders
     for (int n_mp = 0; n_mp < easypap_mesh_desc.nb_metap; n_mp++)
@@ -370,7 +384,8 @@ static void mesh_mgpu_alloc_buffers (void)
            i < mesh_mgpu_info[n_mp].outgoing_offsets[mp + 1]; i++) {
         int src =
             gpu_data[n_mp].outgoing_index[i] + mesh_mgpu_info[n_mp].part_offset;
-        int dst     = mesh_mgpu_info[mp].incoming_offsets[n_mp] + i;
+        int dst = mesh_mgpu_info[mp].incoming_offsets[n_mp] + i -
+                  mesh_mgpu_info[n_mp].outgoing_offsets[mp];
         newpos[src] = dst;
 #ifdef DESPERATE_DEBUG
         PRINT_DEBUG ('m', "MP%d: newpos[%d] <- %d\n", mp, src, dst);
@@ -447,8 +462,8 @@ static void mesh_mgpu_alloc_buffers (void)
         dest++;
       }
 
-    mesh_mgpu_alloc_device_buffer (mp,
-        VOID_STAR_STAR_CAST & gpu_data[mp].soa_buffer, size);
+    mesh_mgpu_alloc_device_buffer (
+        mp, VOID_STAR_STAR_CAST & gpu_data[mp].soa_buffer, size);
 
     // Transfer neighbor SOA
     mesh_mgpu_copy_host_to_device (mp, gpu_data[mp].soa_buffer,
@@ -484,10 +499,11 @@ void mesh_mgpu_config (unsigned halo_width)
 void mesh_mgpu_init (void)
 {
   mesh_mgpu_build_info ();
-  mesh_mgpu_alloc_buffers ();
 
   if (debug_enabled ('m'))
     mesh_mgpu_display_stats ();
+
+  mesh_mgpu_alloc_buffers ();
 }
 
 void mesh_mgpu_exchg_borders (void)
@@ -510,14 +526,16 @@ void mesh_mgpu_exchg_borders (void)
       unsigned ind_src = mesh_mgpu_info[n_mp].outgoing_offsets[g];
       if (size_dst != 0) {
 #ifdef DESPERATE_DEBUG
-        PRINT_DEBUG ('c', "GPU %d: cur_data[%d..%d] <- GPU %d: outgoing[%d..%d]\n", g,
-                ind_dst, ind_dst + size_dst - 1, n_mp, ind_src,
-                ind_src + size_src - 1);
+        PRINT_DEBUG ('c',
+                     "GPU %d: cur_data[%d..%d] <- GPU %d: outgoing[%d..%d]\n",
+                     g, ind_dst, ind_dst + size_dst - 1, n_mp, ind_src,
+                     ind_src + size_src - 1);
 #endif
         mesh_mgpu_wait_gathering_kernel (g, n_mp);
-        mesh_gpu_copy_device_to_device (
-            g, mesh_mgpu_cur_buffer (g) + ind_dst,
-            gpu_data[n_mp].outgoing_values_buffer + ind_src, size_dst * sizeof (float));
+        mesh_gpu_copy_device_to_device (g, mesh_mgpu_cur_buffer (g) + ind_dst,
+                                        gpu_data[n_mp].outgoing_values_buffer +
+                                            ind_src,
+                                        size_dst * sizeof (float));
       }
     }
 #else
@@ -532,11 +550,12 @@ void mesh_mgpu_exchg_borders (void)
   // buffers
   for (int mp = 0; mp < easypap_mesh_desc.nb_metap; mp++) {
     int index = 0;
-    for (int n_mp = 0; n_mp < easypap_mesh_desc.nb_metap; n_mp++)
+    for (int n_mp = 0; n_mp < easypap_mesh_desc.nb_metap; n_mp++) {
       for (int i = mesh_mgpu_info[n_mp].outgoing_offsets[mp];
            i < mesh_mgpu_info[n_mp].outgoing_offsets[mp + 1]; i++)
         gpu_data[mp].incoming_values[index++] =
             gpu_data[n_mp].outgoing_values[i];
+    }
   }
 
   // Push borders to GPU

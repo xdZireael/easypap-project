@@ -1,6 +1,10 @@
 #ifndef EVZ_MESH3D_OBJECT_H
 #define EVZ_MESH3D_OBJECT_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "ezv_mesh3d.h"
 #include "ezv_ctx.h"
 
@@ -27,5 +31,8 @@ static inline struct render_ctx_s *ezv_mesh3d_renderer (ezv_ctx_t ctx)
   return ((ezv_mesh3d_object_t *)(ctx->object))->render_ctx;
 }
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -1,5 +1,4 @@
 
-#include <SDL2/SDL.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -119,7 +118,7 @@ static void *compute_loop (void *arg)
 
 int main (int argc, char *argv[])
 {
-  ezv_init (NULL);
+  ezv_init ();
 
   thr_init ();
 

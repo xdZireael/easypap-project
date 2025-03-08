@@ -13,7 +13,8 @@ EXTERN void cuda_build_program (int list_variants);
 EXTERN void cuda_send_data (void);
 EXTERN void cuda_retrieve_data (void);
 
-EXTERN unsigned cuda_compute (unsigned nb_iter);
+EXTERN unsigned cuda_compute_2dimg (unsigned nb_iter);
+EXTERN unsigned cuda_compute_3dmesh (unsigned nb_iter);
 
 EXTERN void cuda_update_texture (void);
 

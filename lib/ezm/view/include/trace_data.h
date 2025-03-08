@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #include "list.h"
-#include "trace_common.h"
+#include "ezm_types.h"
 #include "perfcounter.h"
 #include "ezv.h"
 

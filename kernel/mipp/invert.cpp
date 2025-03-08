@@ -2,7 +2,6 @@
 #include "img_data.h"
 #include "cppdefs.h"
 #include "mipp.h"
-#include <omp.h>
 
 #define INV_MASK (ezv_rgb_mask ())
 

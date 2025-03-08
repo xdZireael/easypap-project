@@ -1,6 +1,11 @@
 #ifndef MESH_DATA_IS_DEF
 #define MESH_DATA_IS_DEF
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #include "global.h"
 #include "cppdefs.h"
 #include "ezv.h"
@@ -115,5 +120,10 @@ static inline unsigned patch_neighbor (int n)
 
 
 extern unsigned picking_enabled;
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

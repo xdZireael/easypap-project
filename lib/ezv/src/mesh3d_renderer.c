@@ -368,12 +368,12 @@ void mesh3d_renderer_init (ezv_ctx_t ctx)
   ezv_mesh3d_set_renderer (ctx, renctx);
 
   // compile shaders and build program
-  renctx->cpu_shader  = ezv_shader_create ("mesh3d/generic-light.vs", "mesh3d/cpu-light.gs",
+  renctx->cpu_shader  = ezv_shader_create ("mesh3d/generic.vs", "mesh3d/cpu.gs",
                                            "mesh3d/generic.fs");
   renctx->data_shader = ezv_shader_create (
-      "mesh3d/generic-light.vs", "mesh3d/data-light.gs", "mesh3d/generic.fs");
+      "mesh3d/generic.vs", "mesh3d/data.gs", "mesh3d/generic.fs");
   renctx->dapu_shader = ezv_shader_create (
-      "mesh3d/generic-light.vs", "mesh3d/cpu_data-light.gs", "mesh3d/generic.fs");
+      "mesh3d/generic.vs", "mesh3d/cpu_data.gs", "mesh3d/generic.fs");
   renctx->picking_shader = ezv_shader_create (
       "mesh3d/generic.vs", "mesh3d/generic.gs", "mesh3d/picking.fs");
   renctx->clipping_shader =
@@ -695,6 +695,11 @@ int mesh3d_renderer_do_picking (ezv_ctx_t ctx, int x, int y)
   return sel;
 }
 
+void mesh3d_screenshot (ezv_ctx_t ctx, const char *filename)
+{
+  printf ("Placeholder for screenshot\n");
+}
+
 void mesh3d_render (ezv_ctx_t ctx)
 {
   mesh3d_obj_t *mesh          = ezv_mesh3d_mesh (ctx);
@@ -751,7 +756,7 @@ int mesh3d_renderer_zoom (ezv_ctx_t ctx[], unsigned nb_ctx, unsigned shift_mod,
   if (shift_mod) {
     // move clipping plane forward
     if (ctx[0]->clipping_active) {
-      mesh3d_renderer_zplane_update (ctx, nb_ctx, in ? +0.01f : -0.01f);
+      mesh3d_renderer_zplane_update (ctx, nb_ctx, in ? +0.006f : -0.006f);
       return 1;
     }
   } else {

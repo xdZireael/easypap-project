@@ -12,7 +12,7 @@
 #include "ezv_boolmat.h"
 #include "mesh3d_obj.h"
 #include "tinyobj_loader_c.h"
-#ifdef USE_SCOTCH
+#ifdef ENABLE_SCOTCH
 #include "scotch.h"
 #endif
 
@@ -1850,13 +1850,14 @@ static void do_partition (mesh3d_obj_t *mesh, unsigned nbpart,
   mesh->nb_patches       = nbpart;
   mesh->patch_first_cell = malloc ((nbpart + 1) * sizeof (int));
 
-#ifdef USE_SCOTCH
+#ifdef ENABLE_SCOTCH
   if (use_partitionner) {
     SCOTCH_Strat strategy;
     SCOTCH_Graph graph;
 
     SCOTCH_stratInit (&strategy); // Default strategy
     SCOTCH_graphInit (&graph);
+    //SCOTCH_stratGraphMapBuild (&strategy, SCOTCH_STRATQUALITY, 0, 0);
 
     int r =
         SCOTCH_graphBuild (&graph,
@@ -1924,7 +1925,7 @@ static void do_partition (mesh3d_obj_t *mesh, unsigned nbpart,
   {
     if (use_partitionner)
       printf ("Warning: Falling back to a simple contiguous chunks "
-              "distribution (USE_SCOTCH is not enabled)");
+              "distribution (ENABLE_SCOTCH is not enabled)");
 
     // Build a straighforward array of patches (without changing cells order)
     const int chunk = mesh->nb_cells / nbpart;
@@ -1947,6 +1948,10 @@ static void mesh3d_obj_mark_frontiers (mesh3d_obj_t *mesh, int *cellclass)
   for (int c = 0; c < mesh->nb_cells; c++)
     for (int t1 = mesh->cells[c]; t1 < mesh->cells[c + 1]; t1++) {
       int edge_info = 0;
+
+      // first clear all frontier bits
+      mesh->triangle_info[t1] &= ~FRONTIER_MASK;
+
       for (int n = mesh->index_first_neighbor[c];
            n < mesh->index_first_neighbor[c + 1]; n++)
         if (cellclass[c] == cellclass[mesh->neighbors[n]])
@@ -1955,7 +1960,7 @@ static void mesh3d_obj_mark_frontiers (mesh3d_obj_t *mesh, int *cellclass)
             edge_info |= triangles_common_edges (mesh, t1, t2);
       // edge_info indicates shared edges between cells of the same class
       // so to hightlight frontiers, we need to invert edge_info bits
-      mesh->triangle_info[t1] |= ((edge_info ^ 7U) << FRONTIER_SHIFT);
+      mesh->triangle_info[t1] |= (edge_info << FRONTIER_SHIFT) ^ FRONTIER_MASK;
     }
 }
 
@@ -2105,7 +2110,7 @@ static void do_meta_partition (mesh3d_obj_t *mesh, unsigned nbpart,
   mesh->metap_first_patch        = malloc ((nbpart + 1) * sizeof (int));
   mesh->metap_first_border_patch = malloc (nbpart * sizeof (int));
 
-#ifdef USE_SCOTCH
+#ifdef ENABLE_SCOTCH
   if (use_partitionner) {
     SCOTCH_Strat strategy;
     SCOTCH_Graph graph;
@@ -2205,7 +2210,7 @@ static void do_meta_partition (mesh3d_obj_t *mesh, unsigned nbpart,
   {
     if (use_partitionner)
       printf ("Warning: Falling back to a simple contiguous distribution "
-              "of patches (USE_SCOTCH is not enabled)");
+              "of patches (ENABLE_SCOTCH is not enabled)");
 
     // Build a straighforward array of meta-patches (without changing order of
     // patches)

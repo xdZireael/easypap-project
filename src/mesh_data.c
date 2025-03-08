@@ -11,11 +11,15 @@
 #include "ezp_ctx.h"
 #include "ezv_event.h"
 #include "global.h"
+#include "private_glob.h"
 #include "gpu.h"
 #include "hooks.h"
 #include "img_data.h"
 #include "mesh_data.h"
 #include "minmax.h"
+#ifdef ENABLE_CUDA
+#include "nvidia_cuda.h"
+#endif
 
 float *RESTRICT mesh_data     = NULL;
 float *RESTRICT alt_mesh_data = NULL;
@@ -64,8 +68,6 @@ void mesh_data_init (void)
   NB_CELLS = easypap_mesh_desc.nb_cells;
 
   check_patch_size ();
-
-  PRINT_DEBUG ('i', "Init phase 0 (MESH3D mode) : NB_CELLS = %d\n", NB_CELLS);
 }
 
 void mesh_data_set_palette (float *data, unsigned size)
@@ -157,7 +159,7 @@ void mesh_data_alloc (void)
   mesh_data     = ezp_alloc (size);
   alt_mesh_data = ezp_alloc (size);
 
-  PRINT_DEBUG ('i', "Init phase 4: mesh data allocated\n");
+  PRINT_DEBUG ('i', "Init phase 5: mesh data buffers allocated\n");
 }
 
 void mesh_data_free (void)

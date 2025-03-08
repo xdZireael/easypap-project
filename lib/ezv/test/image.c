@@ -1,5 +1,4 @@
 
-#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -56,7 +55,7 @@ static void process_events (void)
 
 int main (int argc, char *argv[])
 {
-  ezv_init (NULL);
+  ezv_init ();
 
   if (argc > 1)
     filename = argv[1];

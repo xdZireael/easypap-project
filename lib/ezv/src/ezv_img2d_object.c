@@ -19,6 +19,7 @@ static ezv_class_t the_class = {
   NULL,  // move z plane
   img2d_set_data_colors, // set data colors
   img2d_get_linepitch, // line pitch
+  NULL // screenshot
 };
 
 void ezv_img2d_object_init (ezv_ctx_t ctx)

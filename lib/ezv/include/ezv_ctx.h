@@ -1,6 +1,10 @@
 #ifndef EZV_CTX_H
 #define EZV_CTX_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "ezv_sdl_gl.h"
 #include "ezv.h"
 #include "ezv_virtual.h"
@@ -15,7 +19,7 @@ typedef struct ezv_ctx_s
   SDL_Window *win;
   int windowID;
   int winw, winh;
-  int picking_enabled, hud_enabled, clipping_enabled;
+  int picking_enabled, hud_enabled, clipping_enabled, screenshot_enabled;
   int clipping_active;
   SDL_GLContext glcontext;
   ezv_palette_t cpu_palette, data_palette;
@@ -35,5 +39,8 @@ enum
   BINDING_POINT_CPUINFO
 };
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif

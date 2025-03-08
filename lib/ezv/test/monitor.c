@@ -1,6 +1,4 @@
 
-#include <SDL2/SDL.h>
-#include <cglm/cglm.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,7 +67,7 @@ static void set_cpu_colors (ezv_ctx_t ctx, ezv_palette_name_t name, int cyclic)
 
 int main (int argc, char *argv[])
 {
-  ezv_init (NULL);
+  ezv_init ();
 
   mon_obj_init (&monitor, NB_CPU, NB_GPU);
   ezv_mon_get_suggested_window_size (&monitor, &SCR_WIDTH, &SCR_HEIGHT);

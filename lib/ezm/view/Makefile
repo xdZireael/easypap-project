@@ -20,10 +20,10 @@ DEPENDS		:= $(SOURCES:src/%.c=deps/%.d)
 MAKEFILES	:= Makefile
 
 CFLAGS		:= -O3 -march=native -Wall -Wno-unused-function -DGL_SILENCE_DEPRECATION #-Wno-deprecated-declarations
-CFLAGS		+= -I./include -I../../../include
+CFLAGS		+= -I./include -I../include -I../internal -I../../../include
 LDLIBS		+= -lm
 
-PACKAGES	:= SDL2_image SDL2_ttf cglm
+PACKAGES	:= SDL2_image SDL2_ttf
 
 ifeq ($(ENABLE_FUT), 1)
 CFLAGS		+= -DENABLE_FUT
@@ -31,10 +31,9 @@ PACKAGES	+= fxt
 endif
 
 ifeq ($(ARCH),DARWIN)
-#CFLAGS		+= -DUSE_GLAD
 LDLIBS		+= -framework OpenGL
 else
-CFLAGS		+= -DUSE_GLAD -rdynamic
+CFLAGS		+= -rdynamic
 LDFLAGS		+= -export-dynamic
 LDLIBS		+= -lGL -lpthread -ldl
 endif

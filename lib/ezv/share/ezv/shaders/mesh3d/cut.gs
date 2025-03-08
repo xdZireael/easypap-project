@@ -10,7 +10,6 @@
 #define EDGE1 4
 #define EDGE2 8
 #define FRONTIER_SHIFT 4
-#define FRONTIER_MASK  7
 #define CELLNO_SHIFT 7
 
 layout (triangles) in;

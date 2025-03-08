@@ -1,9 +1,14 @@
 #ifndef MONITORING_IS_DEF
 #define MONITORING_IS_DEF
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #include "ezm.h"
+#include "ezm_time.h"
 #include "perfcounter.h"
-#include "time_macros.h"
 
 extern ezm_recorder_t ezp_monitor;
 extern char easypap_trace_label[];
@@ -83,5 +88,9 @@ static inline void monitoring_gpu_tile (unsigned x, unsigned y, unsigned w,
 {
   ezm_2D_ext (ezp_monitor, start, end, cpu, x, y, w, h, task_type, task_id);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

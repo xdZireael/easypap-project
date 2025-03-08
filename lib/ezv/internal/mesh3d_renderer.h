@@ -24,4 +24,6 @@ int mesh3d_renderer_zoom (ezv_ctx_t ctx[], unsigned nb_ctx, unsigned shift_mod,
 int mesh3d_renderer_motion (ezv_ctx_t ctx[], unsigned nb_ctx, int dx, int dy,
                             unsigned wheel);
 
+void mesh3d_screenshot (ezv_ctx_t ctx, const char *filename);
+
 #endif

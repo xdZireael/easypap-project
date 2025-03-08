@@ -1,5 +1,4 @@
 
-#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -79,7 +78,7 @@ static void load_mesh (int argc, char *argv[], mesh3d_obj_t *mesh)
 
 int main (int argc, char *argv[])
 {
-  ezv_init (NULL);
+  ezv_init ();
 
   mesh3d_obj_init (&mesh);
   load_mesh (argc, argv, &mesh);

@@ -1,7 +1,7 @@
 #ifndef EASYPAP_GPU_H
 #define EASYPAP_GPU_H
 
-#define MAX_GPU_DEVICES 2
+#define MAX_GPU_DEVICES 4
 
 #ifdef ENABLE_OPENCL ////////// OPENCL //////////
 
@@ -30,7 +30,7 @@
 
 #elif defined(ENABLE_CUDA) ////////// CUDA //////////
 
-#include "nvidia_cuda.h"
+#include "cppdefs.h"
 
 #define GPU_CAN_BE_USED 1
 
@@ -51,7 +51,6 @@
 #define gpu_update_texture() cuda_update_texture ()
 
 #define gpu_establish_bindings() cuda_establish_bindings ()
-
 
 #else ////////// NO GPU //////////
 

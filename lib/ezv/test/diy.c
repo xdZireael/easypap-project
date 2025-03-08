@@ -1,5 +1,4 @@
 
-#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -242,7 +241,7 @@ int main (int argc, char *argv[])
       nb_cells = n;
   }
 
-  ezv_init (NULL);
+  ezv_init ();
 
   mesh3d_obj_init (&mesh);
   create_mesh (&mesh, nb_cells);

@@ -2,7 +2,10 @@
 
 ENABLE_TRACE	:= 1
 
+ifeq ($(MAKECMDGOALS),exec)
 CC			:= gcc
+endif
+
 CFLAGS		:= -O3 -march=native
 
 ######################
@@ -29,9 +32,10 @@ MAKEFILES	:= Makefile
 
 CFLAGS		+= -Wall -Wno-unused-function
 CFLAGS		+= -I./include
+INTERNAL	:= -I./internal
 LDLIBS		+= -lm
 
-PACKAGES	:= sdl2 cglm
+PACKAGES	:= sdl2
 
 ifeq ($(ENABLE_TRACE), 1)
 # Right now, only fxt is supported
@@ -39,10 +43,6 @@ CFLAGS			+= -DENABLE_TRACE -DENABLE_FUT
 CUDA_CFLAGS		+= -DENABLE_TRACE -DENABLE_FUT
 PACKAGES		+= fxt
 endif
-
-# OpenMP
-CFLAGS			+= -fopenmp
-LDFLAGS			+= -fopenmp
 
 # Query CFLAGS and LDLIBS for all packages
 PKG_CHECK	:= $(shell if pkg-config --print-errors --exists $(PACKAGES); then echo 0; else echo 1; fi)
@@ -57,15 +57,17 @@ LDLIBS		+= $(shell pkg-config --libs-only-l $(PACKAGES))
 EZV_DIR			:= ../ezv
 EZV_LIB 		:= $(EZV_DIR)/lib/libezv.a
 LDFLAGS			+= -L$(EZV_DIR)/lib
-LDLIBS			+= -lezv -lscotch
+LDLIBS			+= -lezv -lscotch -lscotcherr
 CFLAGS			+= -I$(EZV_DIR)/include
+ifeq ($(ARCH),LINUX)
+CFLAGS		+= -I/usr/include/scotch
+endif
 CUDA_CFLAGS		+= -I$(EZV_DIR)/include
 
 # OpenGL
 ifeq ($(ARCH),DARWIN)
 LDLIBS		+= -framework OpenGL
 else
-CFLAGS			+= -DUSE_GLAD
 LDLIBS			+= -lGL
 endif
 
@@ -82,30 +84,31 @@ $(OBJECTS) $(POBJECTS): $(MAKEFILES)
 # Compile rules
 
 $(PROGRAMS): bin/%: obj/%.o $(LIB) $(EZV_LIB)
-	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS) -fopenmp
 
 $(OBJECTS): obj/%.o: src/%.c
-	$(CC) -o $@ $(CFLAGS) -c $<
+	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -c $<
 
 $(POBJECTS): obj/%.o: test/%.c
-	$(CC) -o $@ $(CFLAGS) -c $<
+	$(CC) -o $@ $(CFLAGS) -c $< -fopenmp
 
 $(LIB): $(OBJECTS)
 	ar rcs $@ $^
 
-.PHONY: depend
-depend: $(DEPENDS) $(PDEPENDS)
 
 $(DEPENDS) $(PDEPENDS): $(MAKEFILES)
 
 $(DEPENDS): deps/%.d: src/%.c
-	$(CC) -o $@ $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $<
+	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -MM -MT "deps/$*.d obj/$*.o" $<
 
 $(PDEPENDS): deps/%.d: test/%.c
 	$(CC) -o $@ $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $<
 
 ifneq ($(MAKECMDGOALS),clean)
--include $(DEPENDS) $(PDEPENDS)
+-include $(DEPENDS)
+ifeq ($(MAKECMDGOALS),exec)
+-include $(PDEPENDS)
+endif
 endif
 
 .PHONY: clean

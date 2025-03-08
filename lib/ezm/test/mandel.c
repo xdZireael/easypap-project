@@ -1,5 +1,4 @@
 
-#include <SDL2/SDL.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +8,6 @@
 #include "ezm.h"
 #include "ezv.h"
 #include "ezv_event.h"
-#include "ezv_sdl_gl.h"
 
 // settings
 const unsigned int WIN_WIDTH  = 1024;
@@ -161,7 +159,7 @@ int main (int argc, char *argv[])
     printf ("Tile size: %d (was: %d)\n", tile_size, n);
   }
 
-  ezm_init (NULL, do_trace ? EZM_NO_DISPLAY : 0);
+  ezm_init (do_trace ? EZM_NO_DISPLAY : 0);
 
   img2d_obj_init (&img, image_dim, image_dim);
 

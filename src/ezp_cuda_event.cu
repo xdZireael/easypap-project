@@ -21,7 +21,7 @@ static void create_events (void)
   // always create events
   cudaError_t ret;
 
-  for (int g = 0; g < cuda_nb_gpus; g++) {
+  for (unsigned g = 0; g < cuda_nb_gpus; g++) {
     cudaSetDevice (cuda_device (g));
     for (int e = 0; e < _EVENT_NB; e++) {
       ret = cudaEventCreate (&the_events[g][e]);

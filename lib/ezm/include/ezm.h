@@ -1,6 +1,10 @@
 #ifndef EZM_H
 #define EZM_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "ezm_footprint.h"
 #include "ezm_perfmeter.h"
 #include "ezm_tracerec.h"
@@ -11,7 +15,15 @@ typedef struct ezm_recorder_struct *ezm_recorder_t;
 
 #define EZM_NO_DISPLAY 1
 
-void ezm_init (char *prefix, unsigned flags);
+#define ezm_init(flags)                                                        \
+  do {                                                                         \
+    __typeof__ (flags) _flags = (flags);                                       \
+    if (!(_flags & EZM_NO_DISPLAY))                                            \
+      ezv_init ();                                                             \
+    _ezm_init (_flags);                                                        \
+  } while (0)
+
+void _ezm_init (unsigned flags);
 
 ezm_recorder_t ezm_recorder_create (unsigned nb_cpus, unsigned nb_gpus);
 void ezm_recorder_destroy (ezm_recorder_t rec);
@@ -67,5 +79,9 @@ void ezm_helper_add_perfmeter (ezm_recorder_t rec, ezv_ctx_t ctx[],
                                unsigned *nb_ctx);
 void ezm_helper_add_footprint (ezm_recorder_t rec, ezv_ctx_t ctx[],
                                unsigned *nb_ctx);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

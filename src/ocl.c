@@ -6,12 +6,13 @@
 #include "ezp_ctx.h"
 #include "ezv_sdl_gl.h"
 #include "global.h"
+#include "private_glob.h"
+#include "gpu.h"
 #include "hooks.h"
 #include "img_data.h"
 #include "mesh_data.h"
 #include "minmax.h"
-#include "time_macros.h"
-#include "gpu.h"
+#include "ezm_time.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -137,17 +138,22 @@ static void ocl_release (void)
   }
 }
 
-static void ocl_show_config (int quit, int verbose)
+static void display_opengl_renderer (void)
+{
+  if (do_display) {
+    char *glRenderer = (char *)glGetString (GL_RENDERER);
+    if (glRenderer != NULL)
+      printf ("Note: OpenGL renderer uses [%s]\n", glRenderer);
+  }
+}
+
+static void ocl_discover_config (int quit, int verbose)
 {
   cl_platform_id pf[MAX_PLATFORMS];
   cl_int nbp      = 0;
   cl_int chosen_p = -1, chosen_d = -1;
-  char *glRenderer = NULL;
-  char *str        = NULL;
+  char *str = NULL;
   cl_int err;
-
-  if (do_display)
-    glRenderer = (char *)glGetString (GL_RENDERER);
 
   // Get list of platforms
   err = clGetPlatformIDs (MAX_PLATFORMS, pf, (cl_uint *)&nbp);
@@ -259,26 +265,8 @@ static void ocl_show_config (int quit, int verbose)
   if (verbose == 2)
     printf ("    => %d device(s) used\n", ocl_nb_gpus);
 
-  if (verbose == 2 && glRenderer != NULL)
-    printf ("Note: OpenGL renderer uses [%s]\n", glRenderer);
-
   if (quit)
     exit (0);
-}
-
-void ocl_init (int show_config, int silent)
-{
-  cl_int err;
-  int verbose = 0;
-
-  if (!silent) {
-    if (show_config || debug_enabled ('o'))
-      verbose = 2;
-    else
-      verbose = 1;
-  }
-
-  ocl_show_config (show_config, verbose);
 
   if (chosen_device == NULL)
     exit_with_error ("Device could not be automatically chosen: please use "
@@ -287,6 +275,11 @@ void ocl_init (int show_config, int silent)
   err = clGetDeviceInfo (chosen_device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
                          sizeof (size_t), &max_workgroup_size, NULL);
   check (err, "Cannot get max workgroup size");
+}
+
+static void ocl_create_context (void)
+{
+  cl_int err;
 
   if (do_display && easypap_gl_buffer_sharing) {
     ezv_switch_to_context (ctx[0]);
@@ -331,6 +324,52 @@ void ocl_init (int show_config, int silent)
            "or use --no-gl-buffer-share (-nbs) option.");
     // printf ("queue %p for device %p\n", ocl_gpu[g].queue, ocl_gpu[g].device);
   }
+}
+
+static void ocl_create_virtual_gpus (int verbose)
+{
+  if (!use_virtual_gpus)
+    return;
+
+  unsigned actual_gpus = ocl_nb_gpus;
+
+  for (int extra = 0; extra < use_virtual_gpus && ocl_nb_gpus < MAX_GPU_DEVICES;
+       extra++) {
+
+    ocl_gpu[ocl_nb_gpus].device = ocl_gpu[extra % actual_gpus].device;
+
+    if (verbose > 0) {
+      char name[1024];
+
+      cl_int err = clGetDeviceInfo (ocl_gpu[ocl_nb_gpus].device, CL_DEVICE_NAME,
+                                    1024, name, NULL);
+      check (err, "Cannot get type of device");
+      printf ("Using Virtual Device: %s [#%d]\n", name, ocl_nb_gpus);
+    }
+    
+    ocl_nb_gpus++;
+  }
+
+  use_multiple_gpu = 1;
+  easypap_gl_buffer_sharing = 0; // disable OpenGL buffer sharing
+}
+
+void ocl_init (int show_config, int silent)
+{
+  int verbose = 0;
+
+  if (!silent) {
+    if (show_config || debug_enabled ('o'))
+      verbose = 2;
+    else
+      verbose = 1;
+  }
+
+  ocl_discover_config (show_config, verbose);
+
+  ocl_create_virtual_gpus (verbose);
+
+  ezp_gpu_event_init ();
 }
 
 void ocl_alloc_buffers (void)
@@ -434,16 +473,11 @@ static void ocl_list_variants (void)
 
     printf ("%s\n", buffer);
   }
-
-  exit (EXIT_SUCCESS);
 }
 
-
-void ocl_build_program (int list_variants)
+static void ocl_set_parameters (void)
 {
-  cl_int err;
   char *str = NULL;
-  char buffer[1024];
 
   if (easypap_mode == EASYPAP_MODE_2D_IMAGES) {
 
@@ -487,6 +521,16 @@ void ocl_build_program (int list_variants)
       TILE = MESH_NEIGHBOR_ROUND;
     GPU_SIZE = ROUND_TO_MULTIPLE (NB_CELLS, TILE);
   }
+}
+
+void ocl_build_program (int list_variants)
+{
+  char buffer[1024];
+  cl_int err;
+
+  ocl_create_context ();
+
+  ocl_set_parameters ();
 
   // Load program source into memory
   //
@@ -569,8 +613,10 @@ void ocl_build_program (int list_variants)
   if (err != CL_SUCCESS)
     exit_with_error ("Failed to build program");
 
-  if (list_variants)
+  if (list_variants) {
     ocl_list_variants ();
+    return;
+  }
 
   // Create the compute kernels in the program we wish to run
   //
@@ -606,7 +652,7 @@ void ocl_send_data (void)
 {
   if (the_send_data != NULL) {
     the_send_data ();
-    PRINT_DEBUG ('i', "Init phase 7 : Initial data transferred to OpenCL "
+    PRINT_DEBUG ('i', "Init phase 8 : Initial data transferred to OpenCL "
                       "device (user-defined callback)\n");
   } else if (ocl_nb_gpus == 1) {
     cl_int err;
@@ -624,7 +670,7 @@ void ocl_send_data (void)
       check (err, "Failed to write to next_buffer");
 
       PRINT_DEBUG (
-          'i', "Init phase 7 : Initial data transferred to OpenCL device\n");
+          'i', "Init phase 8 : Initial data transferred to OpenCL device\n");
     } else { // 3D_MESHES
       const unsigned size = NB_CELLS * sizeof (float);
       const int g         = 0;
@@ -638,7 +684,7 @@ void ocl_send_data (void)
       check (err, "Failed to write to next_buffer");
 
       PRINT_DEBUG (
-          'i', "Init phase 7 : Initial data transferred to OpenCL device\n");
+          'i', "Init phase 8 : Initial data transferred to OpenCL device\n");
     }
   }
 }
@@ -800,7 +846,6 @@ size_t ocl_get_max_workgroup_size (void)
 {
   return max_workgroup_size;
 }
-
 
 const char *ocl_GetError (cl_int error)
 {

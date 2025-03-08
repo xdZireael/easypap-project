@@ -1,6 +1,11 @@
 #ifndef OCL_IS_DEF
 #define OCL_IS_DEF
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
 
@@ -52,5 +57,9 @@ extern cl_program program;
 #define ocl_next_buffer(gpu) ocl_gpu[gpu].nextb
 #define ocl_compute_kernel(gpu) ocl_gpu[gpu].kernel
 
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

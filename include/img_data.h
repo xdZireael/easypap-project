@@ -1,6 +1,11 @@
 #ifndef IMG_DATA_IS_DEF
 #define IMG_DATA_IS_DEF
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #include "global.h"
 #include "cppdefs.h"
 #include "ezv.h"
@@ -58,5 +63,10 @@ void img_data_do_pick (void);
 
 unsigned heat_to_rgb (float v); // 0.0 = cold, 1.0 = hot
 unsigned heat_to_3gauss_rgb (double v); // 0.0 = cold, 1.0 = hot
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

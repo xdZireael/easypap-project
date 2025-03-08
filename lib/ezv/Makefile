@@ -1,6 +1,6 @@
 ### config section ###
 
-USE_SCOTCH	:= 1
+ENABLE_SCOTCH	:= 1
 
 CFLAGS		:= -O3 -march=native
 
@@ -23,23 +23,26 @@ MAKEFILES	:= Makefile
 
 CFLAGS		+= -Wall -Wno-unused-function -DGL_SILENCE_DEPRECATION
 CFLAGS		+= -I./include
+INTERNAL	:= -I./internal
 LDLIBS		+= -lm
 
-ifeq ($(USE_SCOTCH), 1)
-CFLAGS		+= -DUSE_SCOTCH
+ifeq ($(ENABLE_SCOTCH), 1)
+CFLAGS		+= -DENABLE_SCOTCH
 ifeq ($(ARCH),LINUX)
 CFLAGS		+= -I/usr/include/scotch
 endif
-LDLIBS		+= -lscotch
+LDLIBS		+= -lscotch -lscotcherr
 endif
 
 PACKAGES	:= sdl2 cglm
 
+# cglm is used as a header-only package
+L_PACKAGES	:= $(filter-out cglm, $(PACKAGES))
+
 ifeq ($(ARCH),DARWIN)
-#CFLAGS		+= -DUSE_GLAD
 LDLIBS		+= -framework OpenGL
 else
-CFLAGS		+= -DUSE_GLAD -rdynamic
+CFLAGS		+= -rdynamic
 LDFLAGS		+= -export-dynamic
 LDLIBS		+= -lGL -ldl
 endif
@@ -50,8 +53,8 @@ ifeq ($(PKG_CHECK), 1)
 $(error Installation problem: missing package)
 endif
 CFLAGS		+= $(shell pkg-config --cflags $(PACKAGES))
-LDFLAGS		+= $(shell pkg-config --libs-only-L $(PACKAGES))
-LDLIBS		+= $(shell pkg-config --libs-only-l $(PACKAGES))
+LDFLAGS		+= $(shell pkg-config --libs-only-L $(L_PACKAGES))
+LDLIBS		+= $(shell pkg-config --libs-only-l $(L_PACKAGES))
 
 
 # Must be the first rule
@@ -70,7 +73,7 @@ $(PROGRAMS): bin/%: obj/%.o $(LIB)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 $(OBJECTS): obj/%.o: src/%.c
-	$(CC) -o $@ $(CFLAGS) -c $<
+	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -c $<
 
 $(POBJECTS): obj/%.o: test/%.c
 	$(CC) -o $@ $(CFLAGS) -c $<
@@ -78,19 +81,20 @@ $(POBJECTS): obj/%.o: test/%.c
 $(LIB): $(OBJECTS)
 	ar rcs $@ $^
 
-.PHONY: depend
-depend: $(DEPENDS) $(PDEPENDS)
 
 $(DEPENDS) $(PDEPENDS): $(MAKEFILES)
 
 $(DEPENDS): deps/%.d: src/%.c
-	$(CC) -o $@ $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $<
+	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -MM -MT "deps/$*.d obj/$*.o" $<
 
 $(PDEPENDS): deps/%.d: test/%.c
 	$(CC) -o $@ $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $<
 
 ifneq ($(MAKECMDGOALS),clean)
--include $(DEPENDS) $(PDEPENDS)
+-include $(DEPENDS)
+ifeq ($(MAKECMDGOALS),exec)
+-include $(PDEPENDS)
+endif
 endif
 
 .PHONY: clean
