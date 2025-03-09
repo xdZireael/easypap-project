@@ -2,6 +2,11 @@
 # Easyview trace visualization utility
 add_executable(easyview)
 
+# tune some flags for GCC or CLANG
+if (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(easyview PRIVATE -march=native)
+endif()
+
 target_sources(easyview
   PRIVATE
     src/main.c
