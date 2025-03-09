@@ -4,12 +4,9 @@ add_library(Easypap::ezm ALIAS ezm)
 target_compile_options(ezm PRIVATE -Wall -Wno-unused-function)
 
 # tune some flags for GCC or CLANG
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR
-    CMAKE_C_COMPILER_ID STREQUAL "Clang")
-  if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(ezm PRIVATE -march=native)
-  endif()
-endif() # GNU OR Clang
+endif()
 
 # ezm needs ezv
 target_link_libraries(ezm PUBLIC ezv)
