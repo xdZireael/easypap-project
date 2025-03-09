@@ -1,17 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(Easypap VERSION 1.0.0)
 
-# cmake policies
-cmake_policy(SET CMP0074 NEW) # to use MY_PACKAGE_ROOT if MY_PACKAGE is not in a standard place
-cmake_policy(SET CMP0072 NEW) # to avoid prefer GLVND
-cmake_policy(SET CMP0079 NEW) # allow to use target_link_libraries with full path to the library
-
-# Ensure find_package prefers xxxConfig.cmake over Findxxx.cmake
-set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
-
-# set -fPIC flag when building shared libraries
-set(CMAKE_POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
-
 # EasyPAP options
 option(ENABLE_SCOTCH "Use Scotch library"           ON)
 option(ENABLE_TRACE "Generate execution traces"     ON)
@@ -26,6 +15,18 @@ option(CONFIGURE_EASYPAP "Configure Easypap"        ON)
 
 # General options
 option(BUILD_SHARED_LIBS "Build shared libraries"   ON)
+
+
+# cmake policies
+cmake_policy(SET CMP0074 NEW) # to use MY_PACKAGE_ROOT if MY_PACKAGE is not in a standard place
+cmake_policy(SET CMP0072 NEW) # to avoid prefer GLVND
+cmake_policy(SET CMP0079 NEW) # allow to use target_link_libraries with full path to the library
+
+# Ensure find_package prefers xxxConfig.cmake over Findxxx.cmake
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
+
+# set -fPIC flag when building shared libraries
+set(CMAKE_POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
 
 # Add the path of the custom module
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -88,18 +89,18 @@ if (CONFIGURE_EASYPAP)
     find_package(FLEX REQUIRED)
 
     set(LEX_FILE ${CMAKE_SOURCE_DIR}/src/rle_lexer.l)
-    set(GENERATED_C_FILE ${CMAKE_CURRENT_BINARY_DIR}/rle_lexer.c)
+    set(FLEX_GENERATED_C_FILE ${CMAKE_CURRENT_BINARY_DIR}/rle_lexer.c)
     add_custom_command(
-      OUTPUT ${GENERATED_C_FILE}
+      OUTPUT ${FLEX_GENERATED_C_FILE}
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
-      COMMAND flex -o${GENERATED_C_FILE} ${LEX_FILE}
+      COMMAND flex -o${FLEX_GENERATED_C_FILE} ${LEX_FILE}
       DEPENDS ${LEX_FILE}
       COMMENT "Generating C file from ${LEX_FILE}"
       VERBATIM
     )
 
     # Add the generated file to the list of sources
-    target_sources(easypap PRIVATE ${GENERATED_C_FILE})
+    target_sources(easypap PRIVATE ${FLEX_GENERATED_C_FILE})
 
     # hwloc
     include(FindPkgConfig)
@@ -150,7 +151,10 @@ if (CONFIGURE_EASYPAP)
 
     # MIPP
     if(ENABLE_MIPP)
-        enable_language(CXX) # Doesn't seem to be necessary
+        list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/lib/mipp")
+        set(MIPP_ROOT ${CMAKE_SOURCE_DIR}/lib/mipp)
+        find_package(MIPP REQUIRED)
+        target_link_libraries(easypap PRIVATE MIPP)
     endif()
 
     # SHA
@@ -185,6 +189,10 @@ if (CONFIGURE_EASYPAP)
 
     # Kernels
     add_subdirectory(kernel)
+
+    include(CMakePrintHelpers)
+    cmake_print_properties(TARGETS easypap
+        PROPERTIES COMPILE_OPTIONS COMPILE_DEFINITIONS)
 
 endif()
 
