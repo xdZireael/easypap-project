@@ -51,7 +51,7 @@ rm -rf build
 # Configure
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 # Build
-cmake --build build --config Release
+cmake --build build
 ```
 
 To quickly give it a try, you may run the all-in-one Easypap cmake build script:
