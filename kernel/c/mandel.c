@@ -185,9 +185,6 @@ void mandel_debug (int x, int y)
 }
 
 
-///////////////////////////////////////////////////////////////////////////
-// Copy and paste at the end of mandel.c
-
 // Intrinsics functions
 #ifdef ENABLE_VECTO
 #include <immintrin.h>
@@ -265,4 +262,3 @@ int mandel_do_tile_avx (int x, int y, int width, int height)
 #endif // AVX
 
 #endif
-///////////////////////////////////////////////////////////////////////////
