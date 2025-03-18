@@ -186,10 +186,9 @@ void mandel_debug (int x, int y)
 
 
 // Intrinsics functions
-#ifdef ENABLE_VECTO
-#include <immintrin.h>
 
 #if __AVX2__ == 1
+#include <immintrin.h>
 
 void mandel_tile_check_avx (void)
 {
@@ -260,5 +259,3 @@ int mandel_do_tile_avx (int x, int y, int width, int height)
 }
 
 #endif // AVX
-
-#endif

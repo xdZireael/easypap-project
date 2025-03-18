@@ -137,10 +137,9 @@ static void rotate (void)
 
 
 // Intrinsics functions
-#ifdef ENABLE_VECTO
-#include <immintrin.h>
 
 #if __AVX2__ == 1
+#include <immintrin.h>
 
 void spin_tile_check_avx (void)
 {
@@ -281,5 +280,3 @@ int spin_do_tile_avx (int x, int y, int width, int height)
 }
 
 #endif
-#endif
-

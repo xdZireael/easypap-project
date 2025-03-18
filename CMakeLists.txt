@@ -7,9 +7,8 @@ option(ENABLE_TRACE "Generate execution traces"     ON)
 option(ENABLE_OPENCL "Compile with OpenCL"          ON)
 option(ENABLE_CUDA "Compile with CUDA"              OFF)
 option(ENABLE_SHA "Use SHA Hash library"            ON)
-option(ENABLE_VECTO "Enable explicit vectorization" ON)
 option(ENABLE_MPI "Compile with MPI"                OFF)
-option(ENABLE_MIPP "Compile with MIPP"              OFF)
+option(ENABLE_MIPP "Compile with MIPP"              ON)
 # Turn OFF to only prepare for ezv and ezm installation
 option(CONFIGURE_EASYPAP "Configure Easypap"        ON)
 
@@ -66,6 +65,10 @@ if (CONFIGURE_EASYPAP)
         target_compile_options(easypap PRIVATE -march=native)
     endif()
 
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_options(easypap PRIVATE -Wl,--export-dynamic)
+    endif()
+
     target_sources(easypap
       PRIVATE
         src/arch_flags.c        src/ezp_alloc.c         src/img_data.c          src/mesh_mgpu.c         src/pthread_barrier.c
@@ -74,17 +77,17 @@ if (CONFIGURE_EASYPAP)
 
     target_include_directories(easypap PRIVATE include internal)
 
-    target_link_libraries(easypap PUBLIC Easypap::ezv Easypap::ezm) 
+    target_link_libraries(easypap PRIVATE Easypap::ezv Easypap::ezm) 
 
     # find dependencies
     find_package(OpenMP REQUIRED)
-    target_link_libraries(easypap PUBLIC OpenMP::OpenMP_C) 
+    target_link_libraries(easypap PRIVATE OpenMP::OpenMP_C) 
 
     find_package(SDL2 REQUIRED)
-    target_link_libraries(easypap PUBLIC SDL2::SDL2)
+    target_link_libraries(easypap PRIVATE SDL2::SDL2)
 
     find_package(cglm REQUIRED)
-    target_link_libraries(easypap PUBLIC cglm::cglm)
+    target_link_libraries(easypap PRIVATE cglm::cglm)
 
     find_package(FLEX REQUIRED)
 
@@ -181,10 +184,6 @@ if (CONFIGURE_EASYPAP)
             target_link_libraries(easypap PRIVATE MPI::MPI_C) 
             target_compile_definitions(easypap PRIVATE ENABLE_MPI)
         endif()
-    endif()
-
-    if(ENABLE_VECTO)
-        target_compile_definitions(easypap PRIVATE ENABLE_VECTO)
     endif()
 
     # Kernels

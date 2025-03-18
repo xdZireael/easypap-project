@@ -1,8 +1,8 @@
 
 #include "constants.h"
 #include "easypap.h"
-#include "private_glob.h"
 #include "gpu.h"
+#include "private_glob.h"
 #ifdef ENABLE_CUDA
 #include "nvidia_cuda.h"
 #endif
@@ -64,10 +64,7 @@ static unsigned list_gpu_variants __attribute__ ((unused))     = 0;
 static unsigned trace_starting_iteration                       = 1;
 static unsigned show_sha256_signature __attribute__ ((unused)) = 0;
 static unsigned show_iterations                                = 0;
-unsigned use_scotch                                            = 0;
 static unsigned data_sync_on_host                              = 1;
-static unsigned do_shuffle_cells                               = 0;
-static unsigned do_shuffle_partitions                          = 0;
 
 static hwloc_topology_t topology;
 
@@ -139,7 +136,6 @@ void easypap_check_mpi (void)
 
 void easypap_vec_check (unsigned vec_width_in_bytes, direction_t dir)
 {
-#ifdef ENABLE_VECTO
   // Order of types must be consistent with that defined in vec_type enum (see
   // api_funcs.h)
   int n = (dir == DIR_HORIZONTAL ? TILE_W : TILE_H);
@@ -149,8 +145,6 @@ void easypap_vec_check (unsigned vec_width_in_bytes, direction_t dir)
                      "requirements and should be a multiple of %d",
                      (dir == DIR_HORIZONTAL ? "width" : "height"), n,
                      vec_width_in_bytes);
-
-#endif
 }
 
 static void update_refresh_rate (int p)
@@ -281,39 +275,10 @@ static void init_phases (void)
   } else
     PRINT_DEBUG ('i', "Init phase 1: [GPU not activated]\n");
 
-  if (easypap_mode == EASYPAP_MODE_3D_MESHES) {
-    int flags = 0;
-
+  if (easypap_mode == EASYPAP_MODE_3D_MESHES)
     mesh_data_init ();
-
-    if (use_scotch)
-      flags |= MESH3D_PART_USE_SCOTCH;
-    if (debug_enabled ('m') | picking_enabled)
-      flags |= MESH3D_PART_SHOW_FRONTIERS;
-
-    if (do_shuffle_cells) {
-      if (!NB_PATCHES) // force repartitionning
-        NB_PATCHES = easypap_mesh_desc.nb_patches;
-      mesh3d_shuffle_all_cells (&easypap_mesh_desc);
-    }
-
-    // NB_PATCHES == 0  =>  do not repartition
-    mesh3d_obj_partition (&easypap_mesh_desc, NB_PATCHES, flags);
-
-    if (do_shuffle_partitions)
-      mesh3d_shuffle_partitions (&easypap_mesh_desc);
-
-    // For reproducibility reasons, we don't use scotch here
-    if (use_multiple_gpu)
-      mesh3d_obj_meta_partition (&easypap_mesh_desc, easypap_number_of_gpus (),
-                                 /* MESH3D_PART_USE_SCOTCH |
-                                     MESH3D_PART_REGROUP_INNER_PATCHES*/
-                                 0);
-
-    NB_PATCHES = easypap_mesh_desc.nb_patches;
-  } else {
+  else
     img_data_init ();
-  }
 
   master_do_display = do_display;
 
@@ -1118,7 +1083,7 @@ static void filter_args (int *argc, char *argv[])
       (*argc)--;
       argv++;
       NB_TILES_X = atoi (*argv);
-      use_scotch = 1;
+      scotch_flag = MESH3D_PART_USE_SCOTCH;
     } else if (!strcmp (*argv, "--tile-width") || !strcmp (*argv, "-tw")) {
       if (*argc == 1)
         usage_error ("Error: tile width is missing");

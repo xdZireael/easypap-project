@@ -16,7 +16,6 @@ extern "C" {
        .c)
 #define IS_BIG_ENDIAN (!IS_LITTLE_ENDIAN)
 
-#ifdef ENABLE_VECTO
 
 #define AVX_VEC_SIZE_CHAR 32
 #define AVX_VEC_SIZE_INT 8
@@ -39,7 +38,6 @@ extern "C" {
 
 #define SSE_WIDTH SSE_VEC_SIZE_CHAR
 
-#endif
 
 void arch_flags_print (void);
 

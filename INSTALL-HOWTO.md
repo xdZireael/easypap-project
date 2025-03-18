@@ -1,6 +1,6 @@
-# How to Configure, Compile and install EasyPAP?
+# Configuring, Building and Installing EasyPAP
 
-Depending on your needs, there are several ways to configure, build and install EasyPAP, or a subset of of its components.
+Depending on your needs, there are several ways to configure, build and install EasyPAP, or a subset of its components.
 
 The EasyPAP environments sits on top of two components that can be used separately:
 * **EZV**: an OpenGL-based interactive visualization library for 2D images and 3D meshes
@@ -17,7 +17,6 @@ This is the most straighforward option for students in classrooms where every ex
 
 Configuration just consists in enabling/disabling flags at the beginning of the root Makefile. For example:
 ```makefile
-ENABLE_VECTO = 1
 ENABLE_TRACE = 1
 #ENABLE_MPI   = 1
 ENABLE_SHA   = 1
@@ -66,7 +65,7 @@ In case you only need to use some components of EasyPAP (e.g. EZV) in your appli
 ```shell
 rm -rf build
 # Configure
-cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DCMAKE_BUILD_TYPE=Release -DCONFIGURE_EASYPAP=OFF
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DCMAKE_BUILD_TYPE=Release -DCONFIGURE_EASYPAP=OFF
 # Build
 cmake --build build --parallel
 # install
@@ -79,4 +78,4 @@ These instructions are included in the following script that you may customize b
 ./script/cmake-install-ezv-ezm.sh
 ```
 
-Examples of how to extend your application's `CMakeLists.txt` file to use these components can be found in `lib/ezv/test/` (uses EZV) and `lib/ezm/test/` (uses EZV + EZM).
+Examples of how to extend your application's `CMakeLists.txt` file to use these components can be found in `lib/ezv/apps/` and `lib/ezm/apps/`.
