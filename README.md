@@ -15,4 +15,4 @@ Most of the parameters can be specified as command line arguments, when running 
 * monitoring mode
 * and much more!
 
-Please read the [Getting Started Guide](hhttps://raymondnamyst.github.io/easypap/doc/Getting_Started.pdf) before you start!
+Please read the [Getting Started Guide](https://raymondnamyst.github.io/easypap/doc/Getting_Started.pdf) before you start!
