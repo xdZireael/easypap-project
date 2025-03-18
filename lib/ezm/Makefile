@@ -12,10 +12,10 @@ CFLAGS		:= -O3 -march=native
 
 ARCH		:= $(shell uname -s | tr a-z A-Z)
 
-PSOURCES	:= $(wildcard test/*.c)
-POBJECTS	:= $(PSOURCES:test/%.c=obj/%.o)
-PDEPENDS	:= $(PSOURCES:test/%.c=deps/%.d)
-PROGRAMS	:= $(PSOURCES:test/%.c=bin/%)
+PSOURCES	:= $(wildcard apps/*.c)
+POBJECTS	:= $(PSOURCES:apps/%.c=obj/%.o)
+PDEPENDS	:= $(PSOURCES:apps/%.c=deps/%.d)
+PROGRAMS	:= $(PSOURCES:apps/%.c=bin/%)
 
 LIB			:= lib/libezm.a
 
@@ -89,7 +89,7 @@ $(PROGRAMS): bin/%: obj/%.o $(LIB) $(EZV_LIB)
 $(OBJECTS): obj/%.o: src/%.c
 	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -c $<
 
-$(POBJECTS): obj/%.o: test/%.c
+$(POBJECTS): obj/%.o: apps/%.c
 	$(CC) -o $@ $(CFLAGS) -c $< -fopenmp
 
 $(LIB): $(OBJECTS)
@@ -101,7 +101,7 @@ $(DEPENDS) $(PDEPENDS): $(MAKEFILES)
 $(DEPENDS): deps/%.d: src/%.c
 	$(CC) -o $@ $(CFLAGS) $(INTERNAL) -MM -MT "deps/$*.d obj/$*.o" $<
 
-$(PDEPENDS): deps/%.d: test/%.c
+$(PDEPENDS): deps/%.d: apps/%.c
 	$(CC) -o $@ $(CFLAGS) -MM -MT "deps/$*.d obj/$*.o" $<
 
 ifneq ($(MAKECMDGOALS),clean)
