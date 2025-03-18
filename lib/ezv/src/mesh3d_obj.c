@@ -57,7 +57,7 @@ static void display_stats (mesh3d_obj_t *mesh)
           mesh->nb_cells, mesh->nb_triangles, mesh->nb_vertices,
           mesh->total_neighbors);
   if (mesh->nb_patches > 0)
-    printf ("Mesh already partitionned into %d patches\n", mesh->nb_patches);
+    printf ("Mesh originally partitionned into %d patches\n", mesh->nb_patches);
 }
 
 static int add_vertice (mesh3d_obj_t *mesh, float x, float y, float z)
@@ -1014,7 +1014,15 @@ void mesh3d_obj_build_wall (mesh3d_obj_t *mesh, unsigned size)
 {
   build_wall (mesh, size, size);
 
-  mesh3d_form_cells (mesh, 1);
+  mesh3d_form_cells (mesh, 2);
+
+  for (int t = 0; t < mesh->nb_triangles; t++) {
+    if ((t & 1) == 0)
+      mesh->triangle_info[t] |= EDGE1;
+    else
+      mesh->triangle_info[t] |= EDGE0;
+  }
+
 }
 
 void mesh3d_obj_build_torus_volume (mesh3d_obj_t *mesh, unsigned size_x,
@@ -1758,6 +1766,18 @@ void mesh3d_shuffle_partitions (mesh3d_obj_t *mesh)
   }
 }
 
+/**
+ * @brief Builds the neighbor information for each partition in the mesh.
+ *
+ * This function constructs the neighbor relationships between partitions in a
+ * 3D mesh. Any existing neighbor relationships is first removed.
+ *
+ * @param mesh Pointer to the mesh3d_obj_t structure containing the mesh data.
+ *
+ * @note The function will exit with an error message if the mesh has no
+ *       partition data or if there is a data inconsistency detected in the
+ *       partition neighbors.
+ */
 static void build_part_neighbors (mesh3d_obj_t *mesh)
 {
   if (mesh->nb_patches == 0)
@@ -1857,7 +1877,7 @@ static void do_partition (mesh3d_obj_t *mesh, unsigned nbpart,
 
     SCOTCH_stratInit (&strategy); // Default strategy
     SCOTCH_graphInit (&graph);
-    //SCOTCH_stratGraphMapBuild (&strategy, SCOTCH_STRATQUALITY, 0, 0);
+    // SCOTCH_stratGraphMapBuild (&strategy, SCOTCH_STRATQUALITY, 0, 0);
 
     int r =
         SCOTCH_graphBuild (&graph,
@@ -2169,7 +2189,7 @@ static void do_meta_partition (mesh3d_obj_t *mesh, unsigned nbpart,
           newpos[p] = prefix[parttab[p]]++;
 
       for (int mp = 0; mp < nbpart; mp++)
-       // First border partition starts here
+        // First border partition starts here
         mesh->metap_first_border_patch[mp] = prefix[mp];
 
       // Second pass to pack border partitions
@@ -2243,6 +2263,161 @@ void mesh3d_obj_meta_partition (mesh3d_obj_t *mesh, unsigned nbpart, int flag)
 {
   do_meta_partition (mesh, nbpart, flag & MESH3D_PART_USE_SCOTCH,
                      flag & MESH3D_PART_REGROUP_INNER_PATCHES);
+}
+
+static void do_fuse_partitions (mesh3d_obj_t *mesh, unsigned group,
+                                int use_partitionner)
+{
+  if (mesh->nb_patches == 0)
+    exit_with_error ("Mesh has no partition data");
+
+  if (group == 0 || group > mesh->nb_patches)
+    exit_with_error ("Invalid group number (%d)", group);
+
+  if (group == 1)
+    return;
+
+  if (mesh->patch_neighbors == NULL) {
+    if (use_partitionner) {
+      fprintf (stderr, "Warning: mesh has no patch neighbor information.  "
+                       "Falling back to a simple contiguous distribution.\n");
+      use_partitionner = 0;
+    }
+  }
+
+  unsigned nbpart      = (mesh->nb_patches + group - 1) / group;
+  unsigned *first_cell = malloc ((nbpart + 1) * sizeof (unsigned));
+
+  if (nbpart == 1 || nbpart == mesh->nb_patches)
+    use_partitionner = 0;
+
+#ifdef ENABLE_SCOTCH
+  if (use_partitionner) {
+    SCOTCH_Strat strategy;
+    SCOTCH_Graph graph;
+
+    SCOTCH_stratInit (&strategy); // Default strategy
+    SCOTCH_graphInit (&graph);
+
+    int r = SCOTCH_graphBuild (
+        &graph,
+        0,                                              // baseval
+        mesh->nb_patches,                               // vertnbr
+        (SCOTCH_Num *)mesh->index_first_patch_neighbor, // verttab
+        NULL,                                           // vendtab
+        NULL,                                           // velotab
+        NULL,                                           // vlbltab
+        mesh->total_patch_neighbors,                    // edgenbr
+        (SCOTCH_Num *)mesh->patch_neighbors,            // edgetab
+        NULL);                                          // edlotab
+    if (r != 0)
+      exit_with_error ("SCOTCH_graphBuild");
+
+    int *parttab  = calloc (mesh->nb_patches, sizeof (int));
+    int *newpos   = calloc (mesh->nb_patches, sizeof (int));
+    int *partsize = calloc (nbpart, sizeof (int));
+    int *prefix   = calloc (nbpart + 1, sizeof (int));
+
+    struct timespec t1, t2;
+
+    clock_gettime (CLOCK_MONOTONIC, &t1);
+
+    r = SCOTCH_graphPart (&graph, nbpart, &strategy, parttab);
+    if (r != 0)
+      exit_with_error ("SCOTCH_graphPart");
+
+    // free Scotch data structures
+    SCOTCH_graphExit (&graph);
+    SCOTCH_stratExit (&strategy);
+
+    for (int p = 0; p < mesh->nb_patches; p++)
+      partsize[parttab[p]]++;
+
+    for (int mp = 1; mp < nbpart + 1; mp++)
+      prefix[mp] = prefix[mp - 1] + partsize[mp - 1];
+
+    // calculate new indexes of patches
+    for (int p = 0; p < mesh->nb_patches; p++)
+      newpos[p] = prefix[parttab[p]]++;
+
+    // We can get rid of some arrays at this point
+    free (parttab);
+    parttab = NULL;
+    free (prefix);
+    prefix = NULL;
+
+    // relayout everything :(
+    mesh3d_reorder_partitions (mesh, newpos);
+    free (newpos);
+    newpos = NULL;
+
+    // Construct Reconstruct first_cell array
+    unsigned p_src       = 0;
+
+    for (unsigned p = 0; p < nbpart; p++) {
+      first_cell[p] = mesh->patch_first_cell[p_src];
+      p_src += partsize[p];
+    }
+    first_cell[nbpart] = mesh->nb_cells;
+
+    // We can get rid of some arrays at this point
+    free (partsize);
+    partsize = NULL;
+
+    clock_gettime (CLOCK_MONOTONIC, &t2);
+
+    printf ("Mesh coarsened from %d into %d patches using Scotch (%llu usec)\n",
+            mesh->nb_patches, nbpart, TIMESPEC2USEC (t2) - TIMESPEC2USEC (t1));
+  } else
+#endif
+  {
+    if (use_partitionner)
+      printf ("Warning: Falling back to a simple contiguous distribution "
+              "of patches (ENABLE_SCOTCH is not enabled)");
+
+    for (unsigned p = 0; p < nbpart; p++) {
+      unsigned start = p * group;
+      first_cell[p]  = mesh->patch_first_cell[start];
+    }
+    first_cell[nbpart] = mesh->nb_cells;
+
+    printf ("Fused blocs of %d partitions (nb_patches: %d -> %d)\n", group,
+            mesh->nb_patches, nbpart);
+  }
+
+  free (mesh->patch_first_cell);
+  mesh->patch_first_cell = first_cell;
+  mesh->nb_patches       = nbpart;
+
+  if (mesh->nb_metap > 0) {
+    printf ("Cancelling existing meta-partitioning…\n");
+    if (mesh->metap_first_patch != NULL) {
+      free (mesh->metap_first_patch);
+      mesh->metap_first_patch = NULL;
+    }
+    mesh->nb_metap = 0;
+  }
+}
+
+void mesh3d_obj_fuse_partitions (mesh3d_obj_t *mesh, unsigned group, int flag)
+{
+  do_fuse_partitions (mesh, group, flag & MESH3D_PART_USE_SCOTCH);
+
+  // Build partitions neighbor data
+  build_part_neighbors (mesh);
+
+  if (flag & MESH3D_PART_SHOW_FRONTIERS) {
+    // (re)compute parttab
+    int *parttab = (int *)calloc (mesh->nb_cells, sizeof (int));
+    for (int p = 0; p < mesh->nb_patches; p++)
+      for (int c = mesh->patch_first_cell[p]; c < mesh->patch_first_cell[p + 1];
+           c++)
+        parttab[c] = p;
+
+    mesh3d_obj_mark_frontiers (mesh, parttab);
+
+    free (parttab);
+  }
 }
 
 int mesh3d_obj_get_patch_of_cell (mesh3d_obj_t *mesh, unsigned cell)

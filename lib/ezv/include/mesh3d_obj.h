@@ -89,6 +89,7 @@ void mesh3d_reorder_partitions (mesh3d_obj_t *mesh, int newpos[]);
 void mesh3d_shuffle_cells_in_partitions (mesh3d_obj_t *mesh);
 void mesh3d_shuffle_all_cells (mesh3d_obj_t *mesh);
 void mesh3d_shuffle_partitions (mesh3d_obj_t *mesh);
+void mesh3d_obj_fuse_partitions (mesh3d_obj_t *mesh, unsigned group, int flag);
 
 void mesh3d_obj_meta_partition (mesh3d_obj_t *mesh, unsigned nbpart, int flag);
 
