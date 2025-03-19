@@ -11,31 +11,6 @@ The EasyPAP environments sits on top of two components that can be used separate
 
 This section describes how to configure and compile EasyPAP to write and experiment with kernels written in Pthreads, OpenMP, CUDA, OpenCL, MPI, MIPP or Raja, or a combination of some of them.
 
-### Using regular Makefiles
-
-This is the most straighforward option for students in classrooms where every extra package (SDL2, MPI, etc.) has been preinstalled on the system.
-
-Configuration just consists in enabling/disabling flags at the beginning of the root Makefile. For example:
-```makefile
-ENABLE_TRACE = 1
-#ENABLE_MPI   = 1
-ENABLE_SHA   = 1
-ENABLE_OPENCL= 1
-```
-The `build-all` script will perform all the necessary `make` commands for you:
-```shell
-./script/build-all clean # clean all generated files
-./script/build-all -j    # build EasyPAP and use make -j in each directory
-```
-
-Note that all command-line parameters are passed to `make` 'as is'. Thus, changing the compiler is as simple as:
-
-    ./script/build-all CC=clang
-
-You're done!
-
-### Using CMake
-
 You may start by customizing the root `CMakeLists.txt` file:
 ```makefile
 # options
