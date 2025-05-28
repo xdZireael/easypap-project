@@ -5,6 +5,7 @@
 #include "ezm.h"
 #include "ezm_footprint.h"
 #include "ezm_perfmeter.h"
+#include "ezm_prefix.h"
 #ifdef ENABLE_TRACE
 #include "ezm_tracerec.h"
 #endif
@@ -12,10 +13,6 @@
 #include "ezv.h"
 #include "ezv_img2d_object.h"
 #include "ezv_mesh3d_object.h"
-
-#ifndef INSTALL_DIR
-#define INSTALL_DIR "."
-#endif
 
 static int no_display = 0;
 
@@ -35,10 +32,17 @@ struct ezm_recorder_struct
 #endif
 };
 
-void _ezm_init (unsigned flags)
+void ezm_init (char *prefix, unsigned flags)
 {
+  strcpy (ezm_prefix, prefix ? prefix : ".");
+
   if (flags & EZM_NO_DISPLAY)
     no_display = 1;
+  else {
+    char path[1024];
+    sprintf (path, "%s/../ezv", ezm_prefix);
+    ezv_init (path);
+  }
 }
 
 ezm_recorder_t ezm_recorder_create (unsigned nb_cpus, unsigned nb_gpus)

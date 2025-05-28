@@ -99,9 +99,3 @@ unsigned ezv_get_linepitch (ezv_ctx_t ctx)
   else
     exit_with_error ("get_linepitch not supported on %s ctx", ezv_ctx_typestr (ctx));
 }
-
-void ezv_take_screenshot (ezv_ctx_t ctx, const char *filename)
-{
-  if (ctx->class->screenshot != NULL)
-    ctx->class->screenshot (ctx, filename);
-}

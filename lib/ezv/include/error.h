@@ -2,10 +2,6 @@
 #ifndef ERROR_H
 #define ERROR_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/errno.h>
@@ -17,9 +13,5 @@ extern "C" {
             ##__VA_ARGS__);                                            \
     exit (EXIT_FAILURE);                                               \
   } while (0)
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -12,8 +12,7 @@
 #include <unistd.h>
 
 #include "error.h"
-#include "ezm_trace_codes.h"
-#include "ezm_pack.h"
+#include "trace_common.h"
 #include "trace_data.h"
 #include "trace_file.h"
 

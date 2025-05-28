@@ -1,6 +1,4 @@
+public
 .vscode
 *.pdf
 *.csv
-.DS_Store
-*~
-build

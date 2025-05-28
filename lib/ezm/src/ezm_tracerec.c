@@ -4,7 +4,6 @@
 #include "error.h"
 #include "ezm_time.h"
 #include "ezm_tracerec.h"
-#include "ezm_trace_codes.h"
 #include "ezm_pack.h"
 
 #ifdef ENABLE_FUT

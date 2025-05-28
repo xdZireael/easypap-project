@@ -1,11 +1,6 @@
 #ifndef MESH_MGPU_OCL_H
 #define MESH_MGPU_OCL_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 #include "gpu.h"
 #include "ocl.h"
 
@@ -25,10 +20,5 @@ void mesh_mgpu_launch_cell_gathering_kernel (cl_kernel kernel, int gpu,
 
 cl_mem mesh_mgpu_cur_buffer (int gpu);
 cl_mem mesh_mgpu_get_soa_buffer (int gpu);
-
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

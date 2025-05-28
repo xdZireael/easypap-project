@@ -12,7 +12,6 @@ EXTERN
 #include "error.h"
 #include "ezp_ctx.h"
 #include "global.h"
-#include "private_glob.h"
 #include "hooks.h"
 #include "img_data.h"
 #include "mesh_data.h"
@@ -45,7 +44,7 @@ unsigned cuda_nb_gpus = 0;
 
 static int *neighbor_soa_buffer = NULL;
 
-static unsigned nb_threads_per_block = 0;
+static int nb_threads_per_block = 0;
 
 unsigned GPU_SIZE_X = 0;
 unsigned GPU_SIZE_Y = 0;
@@ -130,7 +129,7 @@ EXTERN void cuda_send_data (void)
 
   if (the_send_data != NULL) {
     the_send_data ();
-    PRINT_DEBUG ('i', "Init phase 8 : Initial data transferred to CUDA "
+    PRINT_DEBUG ('i', "Init phase 7 : Initial data transferred to CUDA "
                       "device (user-defined callback)\n");
   } else if (cuda_nb_gpus == 1) {
 
@@ -203,7 +202,7 @@ static void add_gpu (int id_gpu)
   PRINT_DEBUG ('c', "Using GPU %d: [%s]\n", id_gpu, props.name);
 }
 
-EXTERN unsigned cuda_peer_access_enabled (int device0, int device1)
+extern unsigned cuda_peer_access_enabled (int device0, int device1)
 {
   cudaError_t ret;
   int status0 = 0, status1 = 0;
@@ -216,7 +215,7 @@ EXTERN unsigned cuda_peer_access_enabled (int device0, int device1)
   return status0 & status1;
 }
 
-EXTERN void cuda_configure_peer_access (int device0, int device1)
+extern void cuda_configure_peer_access (int device0, int device1)
 {
   cudaError_t ret;
 
@@ -277,7 +276,7 @@ EXTERN unsigned cuda_compute_2dimg (unsigned nb_iter)
 
   monitoring_start (easypap_gpu_lane (0));
 
-  for (unsigned i = 0; i < nb_iter; i++) {
+  for (int i = 0; i < nb_iter; i++) {
 
     the_cuda_kernel_2dimg<<<grid, block, 0, cuda_stream (0)>>> (
         cuda_cur_buffer (0), cuda_next_buffer (0), DIM);
@@ -308,7 +307,7 @@ EXTERN unsigned cuda_compute_3dmesh (unsigned nb_iter)
 
   monitoring_start (easypap_gpu_lane (0));
 
-  for (unsigned i = 0; i < nb_iter; i++) {
+  for (int i = 0; i < nb_iter; i++) {
 
     the_cuda_kernel_3dmesh<<<grid, block, 0, cuda_stream (0)>>> (
         cuda_cur_data (0), cuda_next_data (0), neighbor_soa_buffer, NB_CELLS,
@@ -397,7 +396,7 @@ EXTERN void cuda_alloc_buffers (void)
   if (easypap_mode == EASYPAP_MODE_2D_IMAGES) {
     const unsigned size = DIM * DIM * sizeof (uint32_t);
 
-    for (unsigned g = 0; g < cuda_nb_gpus; g++) {
+    for (int g = 0; g < cuda_nb_gpus; g++) {
 
       ret = cudaSetDevice (cuda_device (g));
       check (ret, "cudaSetDevice");
@@ -422,7 +421,7 @@ EXTERN void cuda_alloc_buffers (void)
     const unsigned size = NB_CELLS * sizeof (float);
 
     // Allocate buffers inside device memory
-    for (unsigned g = 0; g < cuda_nb_gpus; g++) {
+    for (int g = 0; g < cuda_nb_gpus; g++) {
 
       ret = cudaSetDevice (cuda_device (g));
       check (ret, "cudaSetDevice");
@@ -465,8 +464,10 @@ EXTERN void cuda_build_program (int list_variants)
 {
   char *str = NULL;
 
-  if (list_variants)
-    exit_with_error ("list_variants not implemented for cuda\n");
+  if (list_variants) {
+    printf ("Currently no variants for cuda\n");
+    exit (0);
+  }
 
   if (easypap_mode == EASYPAP_MODE_2D_IMAGES) {
     if (!GPU_SIZE_X) {
@@ -590,6 +591,7 @@ EXTERN void cuda_establish_bindings (void)
     the_cuda_update_texture = (cuda_update_texture_func_t)bind_it (
         kernel_name, "update_texture", variant_name, 0);
     if (the_cuda_update_texture == NULL) {
+      printf ("specific update_texture not found\n");
       the_cuda_update_texture =
           (cuda_update_texture_func_t)cuda_update_texture_generic;
     }

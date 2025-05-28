@@ -1,11 +1,7 @@
 #ifndef EZV_PALETTE_H
 #define EZV_PALETTE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include <stdint.h>
+#include <cglm/cglm.h>
 
 #define MAX_PALETTE 4096
 
@@ -19,7 +15,8 @@ typedef enum
   EZV_PALETTE_3GAUSS,
   EZV_PALETTE_LIFE,
   EZV_PALETTE_BARBIE_KEN,
-  EZV_PALETTE_BW,
+  EZV_PALETTE_CHRISTMAS,
+  EZV_PALETTE_YELLOW,
   EZV_PALETTE_RAINBOW,
   EZV_PALETTE_EASYPAP
 } ezv_palette_name_t;
@@ -28,7 +25,7 @@ typedef struct
 {
   ezv_palette_name_t name;
   unsigned max_colors;
-  float (*colors)[4]; // 4 floats per color
+  vec4 *colors; // 4 floats per color
 } ezv_palette_t;
 
 void ezv_palette_init (ezv_palette_t *palette);
@@ -47,9 +44,5 @@ void ezv_palette_set_predefined (ezv_palette_t *palette,
 
 uint32_t ezv_palette_get_color_from_value (ezv_palette_t *palette, float value);
 uint32_t ezv_palette_get_color_from_index (ezv_palette_t *palette, unsigned index);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

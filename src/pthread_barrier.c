@@ -31,6 +31,33 @@
 
 #ifdef __APPLE__
 
+int pthread_barrierattr_init (pthread_barrierattr_t *attr __unused)
+{
+  return 0;
+}
+
+int pthread_barrierattr_destroy (pthread_barrierattr_t *attr __unused)
+{
+  return 0;
+}
+
+int pthread_barrierattr_getpshared (
+    const pthread_barrierattr_t *restrict attr __unused, int *restrict pshared)
+{
+  *pshared = PTHREAD_PROCESS_PRIVATE;
+  return 0;
+}
+
+int pthread_barrierattr_setpshared (pthread_barrierattr_t *attr __unused,
+                                    int pshared)
+{
+  if (pshared != PTHREAD_PROCESS_PRIVATE) {
+    errno = EINVAL;
+    return -1;
+  }
+  return 0;
+}
+
 int pthread_barrier_init (pthread_barrier_t *restrict barrier,
                           const pthread_barrierattr_t *restrict attr __unused,
                           unsigned count)
@@ -40,9 +67,9 @@ int pthread_barrier_init (pthread_barrier_t *restrict barrier,
     return -1;
   }
 
-  if (pthread_mutex_init (&barrier->mutex, 0) < 0)
+  if (pthread_mutex_init (&barrier->mutex, 0) < 0) {
     return -1;
-
+  }
   if (pthread_cond_init (&barrier->cond, 0) < 0) {
     int errno_save = errno;
     pthread_mutex_destroy (&barrier->mutex);

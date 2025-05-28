@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 
 #include "error.h"
 #include "ezm_perfmeter.h"

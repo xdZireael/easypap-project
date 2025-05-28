@@ -1,6 +1,6 @@
 
 
-//#include <cglm/cglm.h>
+#include <cglm/cglm.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -18,18 +18,14 @@
 
 #include "mesh3d_renderer.h"
 
-#ifndef INSTALL_DIR
-#define INSTALL_DIR "."
-#endif
-
 static unsigned MAX_WINDOW_HEIGHT = 0;
 
-void _ezv_init (const char *prefix)
+void ezv_init (const char *prefix)
 {
   static int done = 0;
 
   if (!done) {
-    strcpy (ezv_prefix, prefix ? prefix : INSTALL_DIR);
+    strcpy (ezv_prefix, prefix ? prefix : ".");
 
     if (!SDL_WasInit (SDL_INIT_VIDEO)) {
       int r = SDL_Init (SDL_INIT_VIDEO);
@@ -50,19 +46,17 @@ void _ezv_init (const char *prefix)
 
 void ezv_load_opengl (void)
 {
-  static int done = 0;
-  if (!done) {
 #ifdef USE_GLAD
+  static int done = 0;
+
+  if (!done) {
     if (!gladLoadGLLoader ((GLADloadproc)SDL_GL_GetProcAddress))
       exit_with_error ("Failed to initialize GLAD");
     fprintf (stderr, "OpenGL dynamically loaded, version %s\n",
              glGetString (GL_VERSION));
-#else
-    fprintf (stderr, "OpenGL loaded, GLSL version = %s\n",
-             glGetString (GL_SHADING_LANGUAGE_VERSION));
-#endif
     done = 1;
   }
+#endif
 }
 
 unsigned ezv_get_max_display_height (void)
@@ -90,10 +84,9 @@ ezv_ctx_t ezv_ctx_create (ezv_ctx_type_t ctx_type, const char *win_title, int x,
   ctx->clipping_enabled =
       ((flags & EZV_ENABLE_CLIPPING) && (ctx_type != EZV_CTX_TYPE_IMG2D)) ? 1
                                                                           : 0;
-  ctx->screenshot_enabled = (flags & EZV_ENABLE_SCREENSHOT) ? 1 : 0;
-  ctx->clipping_active    = 0;
-  ctx->object             = NULL;
-  ctx->class              = NULL;
+  ctx->clipping_active = 0;
+  ctx->object          = NULL;
+  ctx->class           = NULL;
 
   SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK,
                        SDL_GL_CONTEXT_PROFILE_CORE);

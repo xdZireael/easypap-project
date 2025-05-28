@@ -1,10 +1,7 @@
 #ifndef EZM_TRACEREC_H
 #define EZM_TRACEREC_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+#include "ezm_trace_codes.h"
 #include "ezm_types.h"
 #include "ezv.h"
 
@@ -49,9 +46,5 @@ void ezm_tracerec_store_img2d_dim (ezm_tracerec_t rec, unsigned width,
 void ezm_tracerec_store_data_palette (ezm_tracerec_t rec,
                                       ezv_palette_name_t pal);
 void ezm_tracerec_declare_task_ids (ezm_tracerec_t rec, char *task_ids[]);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -1,11 +1,6 @@
 #ifndef EZP_GPU_EVENT_H
 #define EZP_GPU_EVENT_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 #ifdef ENABLE_OPENCL
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
@@ -14,7 +9,13 @@ extern "C" {
 #endif
 #endif
 
+#ifdef __cplusplus
+extern "C" {
 #include "easypap.h"
+}
+#else
+#include "easypap.h"
+#endif
 
 typedef enum
 {
@@ -63,10 +64,5 @@ uint64_t ezp_gpu_event_monitor (int gpu, ezp_gpu_event_t start_evt,
 void ezp_gpu_wait_event (int gpu_wait, int gpu_signal, ezp_gpu_event_t evt);
 
 #define EZP_NO_FOOTPRINT NULL
-
-#ifdef __cplusplus
-}
-#endif
-
 
 #endif

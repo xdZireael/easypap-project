@@ -12,9 +12,11 @@ _easypap_kernels()
 
     kernels=
 
-    find_easypap
+    if [ ! -f obj/none.o ]; then
+        return
+    fi
 
-    tmp=`nm ${EASYPAP} | awk '/_compute_seq$/ {print $3}'`
+    tmp=`nm obj/*.o | awk '/_compute_seq$/ {print $3}'`
 
     for f in $tmp; do
         f=${f#_}
@@ -26,7 +28,7 @@ _easypap_kernels()
 # result placed in variants
 _easypap_variants()
 {
-    local f tmp v
+    local f p file tmp obj v
 
     variants=
     obj=
@@ -35,9 +37,18 @@ _easypap_variants()
         set none
     fi
 
-    find_easypap
+    for p in "${KERNEL_PREFIX[@]}" ; do
+        file=obj/$p$1.o
+        if [ -f $file ]; then
+            obj="$obj $file"
+        fi
+    done
 
-    tmp=`nm ${EASYPAP} | awk '/ +_?'"$1"'_compute_[^.]*$/ {print $3}'`
+    if [[ -z $obj ]]; then
+        return
+    fi
+
+    tmp=`nm $obj | awk '/ +_?'"$1"'_compute_[^.]*$/ {print $3}'`
 
     for f in $tmp; do
         v=${f#*_compute_}
@@ -75,11 +86,20 @@ _easypap_opencl_variants()
 # result placed in gvariants
 _easypap_cuda_variants()
 {
-    local f tmp
+    local f p file tmp obj v
 
-    find_easypap
+    obj=
 
-    tmp=`nm ${EASYPAP} | awk '/ +_?'"$1"'_cuda[^.]*$/ {print $3}'`
+    file=obj/cuda_$1.o
+    if [ -f $file ]; then
+        obj="$obj $file"
+    fi
+
+    if [[ -z $obj ]]; then
+        return
+    fi
+
+    tmp=`nm $obj | awk '/ +_?'"$1"'_cuda[^.]*$/ {print $3}'`
 
     for f in $tmp; do
         if [[ $f =~ ^$1_cuda* ]]; then
@@ -113,17 +133,27 @@ _easypap_gpu_variants()
 # result placed in draw_funcs
 _easypap_draw_funcs()
 {
-    local f  tmp
+    local f p file tmp obj
 
     draw_funcs=
+    obj=
 
     if (( $# == 0 )); then
         set none
     fi
 
-    find_easypap
+    for p in "${KERNEL_PREFIX[@]}" ; do
+        file=obj/$p$1.o
+        if [ -f $file ]; then
+            obj="$obj $file"
+        fi
+    done
 
-    tmp=`nm ${EASYPAP} | awk '/ +_?'"$1"'_draw_[^.]*$/ {print $3}'`
+    if [[ -z $obj ]]; then
+        return
+    fi
+
+    tmp=`nm $obj | awk '/ +_?'"$1"'_draw_[^.]*$/ {print $3}'`
 
     for f in $tmp; do
         draw_funcs="$draw_funcs ${f#*_draw_}"
@@ -133,26 +163,34 @@ _easypap_draw_funcs()
 # result placed in tile_funcs
 _easypap_tile_funcs()
 {
-    local f tmp
+    local f p file tmp obj
 
     tile_funcs=
+    obj=
 
     if (( $# == 0 )); then
         set none
     fi
 
-    find_easypap
+    for p in "${KERNEL_PREFIX[@]}" ; do
+        file=obj/$p$1.o
+        if [ -f $file ]; then
+            obj="$obj $file"
+        fi
+    done
 
-    tmp=`nm ${EASYPAP} | awk '/ +_?'"$1"'_do_tile_[^.]*$/ {print $3}'`
+    if [[ -z $obj ]]; then
+        return
+    fi
 
+    tmp=`nm $obj | awk '/ +_?'"$1"'_do_tile_[^.]*$/ {print $3}'`
     if [[ -n $tmp ]]; then
         for f in $tmp; do
             tile_funcs="$tile_funcs ${f#*_do_tile_}"
         done
         return
     fi
-
-    tmp=`nm ${EASYPAP} | awk '/ +_?'"$1"'_do_patch_[^.]*$/ {print $3}'`
+    tmp=`nm $obj | awk '/ +_?'"$1"'_do_patch_[^.]*$/ {print $3}'`
     for f in $tmp; do
         tile_funcs="$tile_funcs ${f#*_do_patch_}"
     done

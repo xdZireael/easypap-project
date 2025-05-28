@@ -1,10 +1,6 @@
 #ifndef MESH3D_OBJ_H
 #define MESH3D_OBJ_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef enum
 {
   MESH3D_TYPE_SURFACE,
@@ -21,7 +17,7 @@ typedef enum
 #define EDGE1 (1U << 2)
 #define EDGE2 (1U << 3)
 #define FRONTIER_SHIFT 4U
-#define FRONTIER_MASK (7U << FRONTIER_SHIFT)
+#define FRONTIER_MASK 7U
 #define FRONTIER(n) (1U << (FRONTIER_SHIFT + n))
 #define CELLNO_SHIFT 7U
 
@@ -89,7 +85,6 @@ void mesh3d_reorder_partitions (mesh3d_obj_t *mesh, int newpos[]);
 void mesh3d_shuffle_cells_in_partitions (mesh3d_obj_t *mesh);
 void mesh3d_shuffle_all_cells (mesh3d_obj_t *mesh);
 void mesh3d_shuffle_partitions (mesh3d_obj_t *mesh);
-void mesh3d_obj_fuse_partitions (mesh3d_obj_t *mesh, unsigned group, int flag);
 
 void mesh3d_obj_meta_partition (mesh3d_obj_t *mesh, unsigned nbpart, int flag);
 
@@ -99,9 +94,5 @@ void mesh3d_obj_get_bbox_of_cell (mesh3d_obj_t *mesh, unsigned cell,
                                   bbox_t *box);
 void mesh3d_obj_get_barycenter (mesh3d_obj_t *mesh, unsigned cell, float *bx,
                                 float *by, float *bz);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

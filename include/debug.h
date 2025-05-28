@@ -2,11 +2,6 @@
 #ifndef DEBUG_IS_DEF
 #define DEBUG_IS_DEF
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 // La fonction PRINT_DEBUG permet d'afficher selectivement certains messages
 // de debug. Le choix du type des messages s'effectue au moyen d'une
 // chaine contenant des filtres. Ces filtres sont :
@@ -36,7 +31,7 @@ extern char *debug_flags;
 #define PRINT_DEBUG(flag, format, ...)                                         \
   do {                                                                         \
     if (debug_flags != NULL && debug_enabled (flag)) {                         \
-      if (easypap_launched_by_mpi ())                                                      \
+      if (easypap_mpirun)                                                      \
         fprintf (stderr, "Proc %d: " format, easypap_mpi_rank (),              \
                  ##__VA_ARGS__);                                               \
       else                                                                     \
@@ -49,10 +44,5 @@ extern char *debug_flags;
     if (!easypap_mpirun || easypap_mpi_rank () == 0)                           \
       fprintf (stderr, format, ##__VA_ARGS__);                                 \
   } while (0)
-
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

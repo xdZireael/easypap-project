@@ -174,7 +174,7 @@ static void load_ascii_surface (void)
   int texture_width  = -1;
   int texture_height = -1;
 
-  sprintf (file, "%s/share/ezv/img/ascii.png", ezv_prefix);
+  sprintf (file, "%s/share/img/ascii.png", ezv_prefix);
 
   ascii_data = (uint32_t *)stbi_load (file, &texture_width, &texture_height,
                                       &nrChannels, 0);

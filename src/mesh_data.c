@@ -16,10 +16,6 @@
 #include "img_data.h"
 #include "mesh_data.h"
 #include "minmax.h"
-#include "private_glob.h"
-#ifdef ENABLE_CUDA
-#include "nvidia_cuda.h"
-#endif
 
 float *RESTRICT mesh_data     = NULL;
 float *RESTRICT alt_mesh_data = NULL;
@@ -29,11 +25,6 @@ int neighbor_soa_offset     = 0;
 
 unsigned NB_CELLS   = 0;
 unsigned NB_PATCHES = 0;
-
-unsigned scotch_flag           = 0;
-unsigned scotch_implicit_flag  = 0;
-unsigned do_shuffle_cells      = 0;
-unsigned do_shuffle_partitions = 0;
 
 mesh3d_obj_t easypap_mesh_desc;
 
@@ -52,10 +43,11 @@ static void check_patch_size (void)
     if (TILE_W > 0) // -ts or -tw used
       NB_PATCHES = NB_CELLS / TILE_W;
     else {
-      if (easypap_mesh_desc.nb_patches == 0) {
-        NB_PATCHES  = 2; // default = 2 patches
-        scotch_flag = scotch_implicit_flag;
-      }
+      if (easypap_mesh_desc.nb_patches > 0)
+        NB_PATCHES = 0;
+      else
+        NB_PATCHES = 2; // default = 2 patches
+      use_scotch = 1;
     }
   }
 
@@ -66,51 +58,14 @@ static void check_patch_size (void)
 
 void mesh_data_init (void)
 {
-  char *str = NULL;
-  int flags = 0;
-
   mesh3d_obj_init (&easypap_mesh_desc);
   mesh3d_obj_load (easypap_mesh_file, &easypap_mesh_desc);
-
-  str = getenv ("USE_SCOTCH");
-  if (str != NULL)
-    scotch_implicit_flag = (atoi (str) == 0) ? 0 : MESH3D_PART_USE_SCOTCH;
-  else
-    scotch_implicit_flag = scotch_flag; // inherit main partitioning method
 
   NB_CELLS = easypap_mesh_desc.nb_cells;
 
   check_patch_size ();
 
-  if (debug_enabled ('m') | picking_enabled)
-    flags |= MESH3D_PART_SHOW_FRONTIERS;
-
-  if (do_shuffle_cells) {
-    if (!NB_PATCHES) // force repartitionning
-      NB_PATCHES = easypap_mesh_desc.nb_patches;
-    mesh3d_shuffle_all_cells (&easypap_mesh_desc);
-  }
-
-  // NB_PATCHES == 0  =>  do not repartition
-  mesh3d_obj_partition (&easypap_mesh_desc, NB_PATCHES, flags | scotch_flag);
-
-  if (do_shuffle_partitions)
-    mesh3d_shuffle_partitions (&easypap_mesh_desc);
-
-  str = getenv ("EASYPAP_PARTITION_FUSE");
-  if (str != NULL) {
-    unsigned group = atoi (str);
-    mesh3d_obj_fuse_partitions (&easypap_mesh_desc, group,
-                                flags | scotch_implicit_flag);
-  }
-
-  // For reproducibility reasons, we don't use scotch here
-  if (use_multiple_gpu)
-    mesh3d_obj_meta_partition (&easypap_mesh_desc, easypap_number_of_gpus (),
-                               MESH3D_PART_REGROUP_INNER_PATCHES |
-                                   scotch_implicit_flag);
-
-  NB_PATCHES = easypap_mesh_desc.nb_patches;
+  PRINT_DEBUG ('i', "Init phase 0 (MESH3D mode) : NB_CELLS = %d\n", NB_CELLS);
 }
 
 void mesh_data_set_palette (float *data, unsigned size)
@@ -202,7 +157,7 @@ void mesh_data_alloc (void)
   mesh_data     = ezp_alloc (size);
   alt_mesh_data = ezp_alloc (size);
 
-  PRINT_DEBUG ('i', "Init phase 5: mesh data buffers allocated\n");
+  PRINT_DEBUG ('i', "Init phase 4: mesh data allocated\n");
 }
 
 void mesh_data_free (void)
@@ -326,20 +281,26 @@ void mesh_data_do_pick (void)
   }
 }
 
-void mesh_data_coarsen_partitions (unsigned group_size)
+void mesh_data_reorder_partitions (int newpos[])
 {
   if (neighbors_soa != NULL)
     fprintf (stderr, "WARNING: Reordering of partitions/cells will not update "
                      "neighbor_soa data structures!");
 
-  mesh3d_obj_fuse_partitions (&easypap_mesh_desc, group_size,
-                              MESH3D_PART_SHOW_FRONTIERS |
-                                  scotch_implicit_flag);
-
+  mesh3d_reorder_partitions (&easypap_mesh_desc, newpos);
   ezv_mesh3d_refresh_mesh (ctx, nb_ctx);
 
-  picked_cell = -1; // to force refresh of overlay
-  mesh_data_do_pick ();
+  ezv_render (ctx, nb_ctx);
+}
 
-  NB_PATCHES = easypap_mesh_desc.nb_patches;
+void mesh_data_shuffle_cells (void)
+{
+  if (neighbors_soa != NULL)
+    fprintf (stderr, "WARNING: Reordering of partitions/cells will not update "
+                     "neighbor_soa data structures!");
+
+  mesh3d_shuffle_cells_in_partitions (&easypap_mesh_desc);
+  ezv_mesh3d_refresh_mesh (ctx, nb_ctx);
+
+  ezv_render (ctx, nb_ctx);
 }

@@ -44,7 +44,10 @@ for ((i = 1; i <= $#; i++ )); do
     esac
 done
 
-find_easypap
+# build easypap if needed
+if [[ ! -f ${SIMU} ]]; then
+    make -j
+fi
 
 # if thumbnails generation is requested, clean the old files
 if [[ $THUMBS == "yes" ]]; then
@@ -64,7 +67,7 @@ fi
 #         export OMP_PLACES="cores"
 #     else # MacOS
 #         # OMP_PLACES is not supported by libgomp yet
-#         if ! otool -L ${EASYPAP} | grep -q libgomp; then
+#         if ! otool -L ${SIMU} | grep -q libgomp; then
 #             export OMP_PLACES="cores"
 #         fi
 #     fi
@@ -72,9 +75,9 @@ fi
 
 # Run under debugger 
 if [[ $DEBUG = "lldb" ]]; then
-    exec lldb ${EASYPAP} -- "$@"
+    exec lldb ${SIMU} -- "$@"
 elif [[ $DEBUG = "gdb" ]]; then
-    exec gdb --args ${EASYPAP} "$@"
+    exec gdb --args ${SIMU} "$@"
 fi
 
 # check if program should be launched by mpirun
@@ -91,7 +94,7 @@ if [[ -n $MPIRUNARGS ]]; then
             MPIENV="${MPIENV} $envopt $v"
         fi
     done
-    mpirun ${MPIENV} ${MPIRUNARGS} ${EASYPAP} "$@"
+    mpirun ${MPIENV} ${MPIRUNARGS} ${SIMU} "$@"
 else
-    exec ${EASYPAP} "$@"
+    exec ${SIMU} "$@"
 fi

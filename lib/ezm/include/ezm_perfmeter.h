@@ -1,10 +1,6 @@
 #ifndef EZM_PERFMETER_H
 #define EZM_PERFMETER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "ezv.h"
 
 #include <stdint.h>
@@ -25,10 +21,6 @@ void ezm_perfmeter_it_end (ezm_perfmeter_t rec, uint64_t now);
 void ezm_perfmeter_start_work (ezm_perfmeter_t rec, uint64_t now, int who);
 uint64_t ezm_perfmeter_finish_work (ezm_perfmeter_t rec, uint64_t now, int who);
 void ezm_perfmeter_substract_overhead (ezm_perfmeter_t rec, uint64_t duration,
-                                       int who);
-
-#ifdef __cplusplus
-}
-#endif
+                                     int who);
 
 #endif

@@ -1,11 +1,8 @@
 
+
 #include "constants.h"
 #include "easypap.h"
 #include "gpu.h"
-#include "private_glob.h"
-#ifdef ENABLE_CUDA
-#include "nvidia_cuda.h"
-#endif
 #include "hooks.h"
 #ifdef ENABLE_SHA
 #include "hash.h"
@@ -24,19 +21,17 @@
 #include <mpi.h>
 #endif
 
-static int max_iter          = 0;
-static unsigned refresh_rate = 0;
-
+int max_iter             = 0;
+unsigned refresh_rate    = 0;
 unsigned do_display      = 1;
 unsigned vsync           = 1;
 unsigned picking_enabled = 0;
 
-static char *progname   = NULL;
-static char *draw_param = NULL;
-
+static char *progname    = NULL;
 char *variant_name       = NULL;
 char *kernel_name        = NULL;
 char *tile_name          = NULL;
+char *draw_param         = NULL;
 char *config_param       = NULL;
 char *easypap_image_file = NULL;
 char *easypap_mesh_file  = NULL;
@@ -47,7 +42,6 @@ static char *output_file = "./data/perf/data.csv";
 
 unsigned gpu_used                                              = 0;
 unsigned use_multiple_gpu                                      = 0;
-unsigned use_virtual_gpus                                      = 0;
 unsigned easypap_mpirun                                        = 0;
 unsigned easypap_gl_buffer_sharing                             = 1;
 static int _easypap_mpi_rank                                   = 0;
@@ -60,11 +54,14 @@ unsigned do_first_touch                                        = 0;
 static unsigned do_dump __attribute__ ((unused))               = 0;
 static unsigned do_thumbs __attribute__ ((unused))             = 0;
 static unsigned show_gpu_config                                = 0;
-static unsigned list_gpu_variants __attribute__ ((unused))     = 0;
-static unsigned trace_starting_iteration                       = 1;
+static unsigned list_gpu_variants                              = 0;
+unsigned trace_starting_iteration                              = 1;
 static unsigned show_sha256_signature __attribute__ ((unused)) = 0;
 static unsigned show_iterations                                = 0;
+unsigned use_scotch                                            = 0;
 static unsigned data_sync_on_host                              = 1;
+static unsigned do_shuffle_cells                               = 0;
+static unsigned do_shuffle_partitions                          = 0;
 
 static hwloc_topology_t topology;
 
@@ -100,11 +97,6 @@ unsigned easypap_number_of_cores (void)
   return nb_cores;
 }
 
-unsigned easypap_launched_by_mpi (void)
-{
-  return easypap_mpirun;
-}
-
 int easypap_mpi_rank (void)
 {
   return _easypap_mpi_rank;
@@ -136,6 +128,7 @@ void easypap_check_mpi (void)
 
 void easypap_vec_check (unsigned vec_width_in_bytes, direction_t dir)
 {
+#ifdef ENABLE_VECTO
   // Order of types must be consistent with that defined in vec_type enum (see
   // api_funcs.h)
   int n = (dir == DIR_HORIZONTAL ? TILE_W : TILE_H);
@@ -145,6 +138,8 @@ void easypap_vec_check (unsigned vec_width_in_bytes, direction_t dir)
                      "requirements and should be a multiple of %d",
                      (dir == DIR_HORIZONTAL ? "width" : "height"), n,
                      vec_width_in_bytes);
+
+#endif
 }
 
 static void update_refresh_rate (int p)
@@ -224,10 +219,10 @@ static void init_phases (void)
 
     MPI_Comm_rank (MPI_COMM_WORLD, &_easypap_mpi_rank);
     MPI_Comm_size (MPI_COMM_WORLD, &_easypap_mpi_size);
-    PRINT_DEBUG ('i', "Init phase 0: MPI_Init_thread called (%d/%d)\n",
+    PRINT_DEBUG ('i', "Init phase -1: MPI_Init_thread called (%d/%d)\n",
                  _easypap_mpi_rank, _easypap_mpi_size);
   } else
-    PRINT_DEBUG ('i', "Init phase 0: [MPI not activated]\n");
+    PRINT_DEBUG ('i', "Init phase -1: [Process not launched by mpirun]\n");
 #endif
 
   /* Allocate and initialize topology object. */
@@ -239,10 +234,12 @@ static void init_phases (void)
   nb_cores = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_PU);
   PRINT_DEBUG ('t', "%d-core machine detected\n", nb_cores);
 
+#ifdef ENABLE_MONITORING
 #ifdef ENABLE_PAPI
   if (do_cache)
     easypap_perfcounter_init (easypap_requested_number_of_threads (),
                               EASYPAP_MONITOR_ALL);
+#endif
 #endif
 
   ez_pthread_settopo (topology);
@@ -260,7 +257,7 @@ static void init_phases (void)
     }
   }
 
-  hooks_establish_bindings (show_gpu_config);
+  hooks_establish_bindings (show_gpu_config | list_gpu_variants);
 
   if (debug_enabled ('d')) {
     picking_enabled = 1;
@@ -269,16 +266,37 @@ static void init_phases (void)
           0; // Force data sync on host in data debugging mode
   }
 
-  if (gpu_used) {
-    gpu_init (show_gpu_config, 0);
-    PRINT_DEBUG ('i', "Init phase 1: GPU initialized\n");
-  } else
-    PRINT_DEBUG ('i', "Init phase 1: [GPU not activated]\n");
+  if (easypap_mode == EASYPAP_MODE_3D_MESHES) {
+    int flags = 0;
 
-  if (easypap_mode == EASYPAP_MODE_3D_MESHES)
     mesh_data_init ();
-  else
+
+    if (use_scotch)
+      flags |= MESH3D_PART_USE_SCOTCH;
+    if (debug_enabled ('m') | picking_enabled)
+      flags |= MESH3D_PART_SHOW_FRONTIERS;
+
+    if (do_shuffle_cells) {
+      if (!NB_PATCHES) // force repartitionning
+        NB_PATCHES = easypap_mesh_desc.nb_patches;
+      mesh3d_shuffle_all_cells (&easypap_mesh_desc);
+    }
+
+    // NB_PATCHES == 0  =>  do not repartition
+    mesh3d_obj_partition (&easypap_mesh_desc, NB_PATCHES, flags);
+
+    if (do_shuffle_partitions)
+      mesh3d_shuffle_partitions (&easypap_mesh_desc);
+
+    if (use_multiple_gpu)
+      mesh3d_obj_meta_partition (&easypap_mesh_desc, 2,
+                                 MESH3D_PART_USE_SCOTCH |
+                                     MESH3D_PART_REGROUP_INNER_PATCHES);
+
+    NB_PATCHES = easypap_mesh_desc.nb_patches;
+  } else {
     img_data_init ();
+  }
 
   master_do_display = do_display;
 
@@ -314,9 +332,9 @@ static void init_phases (void)
 
   if (the_config != NULL) {
     the_config (config_param);
-    PRINT_DEBUG ('i', "Init phase 2: custom config done\n");
+    PRINT_DEBUG ('i', "Init phase 1: config() hook called\n");
   } else {
-    PRINT_DEBUG ('i', "Init phase 2: [no custom config found]\n");
+    PRINT_DEBUG ('i', "Init phase 1: [no config() hook defined]\n");
   }
 
   if (do_display) {
@@ -333,11 +351,12 @@ static void init_phases (void)
     the_tile_check ();
 
   if (gpu_used) {
-    gpu_build_program (0);
+    gpu_init (show_gpu_config, list_gpu_variants);
+    gpu_build_program (list_gpu_variants);
     gpu_alloc_buffers ();
-    PRINT_DEBUG ('i', "Init phase 3: GPU configured (#gpus = %d)\n",
-                 easypap_number_of_gpus ());
-  }
+    PRINT_DEBUG ('i', "Init phase 2: GPU initialized\n");
+  } else
+    PRINT_DEBUG ('i', "Init phase 2: [GPU init not required]\n");
 
   // Monitoring (either traces, or cpu footprints + perfmeters)
   ezp_monitoring_init (easypap_requested_number_of_threads (),
@@ -347,9 +366,9 @@ static void init_phases (void)
   // init() func which may allocate additional buffers.
   if (the_init != NULL) {
     the_init ();
-    PRINT_DEBUG ('i', "Init phase 4: custom init done\n");
+    PRINT_DEBUG ('i', "Init phase 3: init() hook called\n");
   } else {
-    PRINT_DEBUG ('i', "Init phase 4: [no custom init found]\n");
+    PRINT_DEBUG ('i', "Init phase 3: [no init() hook defined]\n");
   }
 
   // Make sure at leat one task id (0 = anonymous) is stored in the trace
@@ -365,11 +384,11 @@ static void init_phases (void)
   if (do_first_touch) {
     if (the_first_touch != NULL) {
       the_first_touch ();
-      PRINT_DEBUG ('i', "Init phase 6: first-touch done\n");
+      PRINT_DEBUG ('i', "Init phase 5: first-touch() hook called\n");
     } else
-      PRINT_DEBUG ('i', "Init phase 6: [no first-touch policy found]\n");
+      PRINT_DEBUG ('i', "Init phase 5: [no first-touch() hook defined]\n");
   } else
-    PRINT_DEBUG ('i', "Init phase 6: [no first-touch policy found]\n");
+    PRINT_DEBUG ('i', "Init phase 5: [first-touch policy not activated]\n");
 
   // First touch has potentially been performed, so we can load the requested
   // image (if any)
@@ -379,14 +398,15 @@ static void init_phases (void)
   // Appel de la fonction de dessin spécifique, si elle existe
   if (the_draw != NULL) {
     the_draw (draw_param);
-    PRINT_DEBUG ('i', "Init phase 7: user-defined draw done\n");
+    PRINT_DEBUG ('i', "Init phase 6: kernel-specific draw() hook called\n");
   } else
-    PRINT_DEBUG ('i', "Init phase 7: [no user-defined draw found]\n");
+    PRINT_DEBUG ('i',
+                 "Init phase 6: [no kernel-specific draw() hook defined]\n");
 
   if (gpu_used) {
     gpu_send_data ();
   } else
-    PRINT_DEBUG ('i', "Init phase 8: [no GPU data transfer involved]\n");
+    PRINT_DEBUG ('i', "Init phase 7: [no GPU data transfer involved]\n");
 }
 
 static inline void display_refresh (unsigned iter)
@@ -456,7 +476,6 @@ int main (int argc, char **argv)
 
   filter_args (&argc, argv);
 
-#ifdef ENABLE_OPENCL
   if (list_gpu_variants) {
     // bypass complete initialization
 
@@ -465,12 +484,11 @@ int main (int argc, char **argv)
 
     TILE_W = TILE_H = DEFAULT_GPU_TILE_SIZE;
 
-    ocl_init (0, 1);
-    ocl_build_program (1);
+    gpu_init (0, list_gpu_variants);
+    gpu_build_program (list_gpu_variants);
 
-    exit (EXIT_SUCCESS);
+    exit (0);
   }
-#endif
 
   arch_flags_print ();
 
@@ -540,19 +558,6 @@ int main (int argc, char **argv)
               case SDLK_i:
                 ezp_ctx_ithud_toggle ();
                 break;
-              case SDLK_d: {
-                time_t timer;
-                struct tm *tm_info;
-                char filename[MAX_FILENAME];
-
-                timer   = time (NULL);
-                tm_info = localtime (&timer);
-                strftime (filename, MAX_FILENAME,
-                          "data/dump/screenshot-%Y_%m_%d-%H_%M_%S.png",
-                          tm_info);
-                ezp_take_screenshot (filename);
-                break;
-              }
               default:
                 handle_events (&evt, do_pause, iterations);
               }
@@ -646,7 +651,7 @@ int main (int argc, char **argv)
         refresh_rate = INT_MAX;
     }
 
-    t_start = ezm_gettime ();
+    t_start = ezp_gettime ();
 
     while (!stable) {
       if (max_iter && iterations >= max_iter) {
@@ -657,8 +662,10 @@ int main (int argc, char **argv)
           refresh_rate = max_iter - iterations;
 
 #ifdef ENABLE_TRACE
-        if (trace_may_be_used && (iterations + 1 == trace_starting_iteration))
+        if (trace_may_be_used && (iterations + 1 == trace_starting_iteration)) {
           do_trace = 1;
+          ezm_recorder_enable (ezp_monitor, trace_starting_iteration);
+        }
 #endif
 
         monitoring_start_iteration ();
@@ -689,7 +696,7 @@ int main (int argc, char **argv)
       }
     }
 
-    duration = ezm_gettime () - t_start;
+    duration = ezp_gettime () - t_start;
 
     PRINT_MASTER ("Computation completed after %d iterations\n", iterations);
 
@@ -768,9 +775,11 @@ int main (int argc, char **argv)
     MPI_Finalize ();
 #endif
 
+#ifdef ENABLE_MONITORING
 #ifdef ENABLE_PAPI
   if (do_cache)
     easypap_perfcounter_finalize ();
+#endif
 #endif
 
   return 0;
@@ -826,7 +835,6 @@ static void usage (int val)
       "\t-ts\t| --tile-size <TS>\t: use tiles of size TS x TS\n"
       "\t-t\t| --trace\t\t: enable trace\n"
       "\t-ti\t| --trace-iter <n>\t: enable trace starting from iteration n\n"
-      "\t-uvg\t| --use-virtual-gpu <N>\t: use N virtual GPUs\n"
       "\t-v\t| --variant <name>\t: select kernel variant <name>\n"
       "\t-wt\t| --with-tile <name>\t: use do_tile_<name> tiling function\n");
 
@@ -892,12 +900,12 @@ static void filter_args (int *argc, char *argv[])
 #endif
     } else if (!strcmp (*argv, "--list-gpu-variants") ||
                !strcmp (*argv, "-lgv")) {
-#if defined(ENABLE_OPENCL)
+#if defined(ENABLE_OPENCL) || defined(ENABLE_CUDA)
       list_gpu_variants = 1;
       gpu_used          = GPU_CAN_BE_USED;
       do_display        = 0;
 #else
-      warning (*argv, "ENABLE_OPENCL", NULL);
+      warning (*argv, "ENABLE_OPENCL", "ENABLE_CUDA");
 #endif
     } else if (!strcmp (*argv, "--gpu-flavor") || !strcmp (*argv, "-gf")) {
 #if defined(ENABLE_CUDA)
@@ -1014,13 +1022,6 @@ static void filter_args (int *argc, char *argv[])
 #else
       warning (*argv, "ENABLE_OPENCL", "ENABLE_CUDA");
 #endif
-    } else if (!strcmp (*argv, "--use-virtual-gpu") ||
-               !strcmp (*argv, "-uvg")) {
-      if (*argc == 1)
-        usage_error ("Error: number of GPUs is missing");
-      (*argc)--;
-      argv++;
-      use_virtual_gpus = atoi (*argv);
     } else if (!strcmp (*argv, "--kernel") || !strcmp (*argv, "-k")) {
       if (*argc == 1)
         usage_error ("Error: kernel name is missing");
@@ -1083,7 +1084,7 @@ static void filter_args (int *argc, char *argv[])
       (*argc)--;
       argv++;
       NB_TILES_X = atoi (*argv);
-      scotch_flag = MESH3D_PART_USE_SCOTCH;
+      use_scotch = 1;
     } else if (!strcmp (*argv, "--tile-width") || !strcmp (*argv, "-tw")) {
       if (*argc == 1)
         usage_error ("Error: tile width is missing");

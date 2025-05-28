@@ -1,0 +1,1 @@
+OMP_NUM_THREADS=20 OMP_SCHEDULE=static,8 OMP_PLACES=sockets ./run -k life -v omptaskloop -a moultdiehard2474 -s 1024 -tw 1024 -th 8

@@ -4,7 +4,6 @@
 #include <cuda.h>
 #include <stdint.h>
 
-#include "cppdefs.h"
 #include "ezp_gpu_event.h"
 
 // Index manipulation macros
@@ -20,8 +19,6 @@ typedef struct
   cudaStream_t stream;
 } cuda_gpu_t;
 
-EXTERN unsigned easypap_number_of_gpus_cuda (void);
-
 extern cuda_gpu_t cuda_gpu[];
 extern unsigned cuda_nb_gpus;
 
@@ -34,8 +31,8 @@ extern unsigned cuda_nb_gpus;
 #define cuda_cur_data(g) cuda_gpu[g].curd
 #define cuda_next_data(g) cuda_gpu[g].nextd
 
-EXTERN unsigned cuda_peer_access_enabled (int device0, int device1);
-EXTERN extern void cuda_configure_peer_access (int device0, int device1);
+extern unsigned cuda_peer_access_enabled (int device0, int device1);
+extern void cuda_configure_peer_access (int device0, int device1);
 
 #define check(err, format, ...)                                                \
   do {                                                                         \

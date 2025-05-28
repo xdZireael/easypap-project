@@ -1,10 +1,6 @@
 #ifndef EZV_RGBA_H
 #define EZV_RGBA_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdint.h>
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -172,9 +168,5 @@ static inline uint32_t ezv_rgb (uint8_t r, uint8_t g, uint8_t b)
 {
   return ezv_rgba (r, g, b, 255);
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

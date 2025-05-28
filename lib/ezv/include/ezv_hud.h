@@ -1,10 +1,6 @@
 #ifndef EZV_HUD_H
 #define EZV_HUD_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct ezv_ctx_s;
 typedef struct ezv_ctx_s *ezv_ctx_t;
 
@@ -17,9 +13,5 @@ void ezv_hud_toggle (ezv_ctx_t ctx, int hud);
 void ezv_hud_on (ezv_ctx_t ctx, int hud);
 void ezv_hud_off (ezv_ctx_t ctx, int hud);
 void ezv_hud_set (ezv_ctx_t ctx, int hud, char *format, ...);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

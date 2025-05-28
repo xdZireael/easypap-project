@@ -1,7 +1,6 @@
 #include <ezv_rgba.h>
 #include <stdlib.h>
 #include <string.h>
-#include <cglm/cglm.h>
 
 #include "error.h"
 #include "ezv_palette.h"
@@ -90,10 +89,9 @@ void ezv_palette_set_predefined (ezv_palette_t *palette,
 
   switch (name) {
   case EZV_PALETTE_LINEAR: {
-    vec4 colors[]  = {{0.2f, 0.2f, 1.0f, 1.0f},  // blue
-                      {0.2f, 1.0f, 0.2f, 1.0f}, // green
-                      {1.0f, 0.2f, 0.2f, 1.0f}}; // red
-    const int size = 3;
+    vec4 colors[]  = {{0.0f, 0.0f, 1.0f, 1.0f},  // blue
+                      {1.0f, 0.0f, 0.0f, 1.0f}}; // red
+    const int size = 2;
 
     alloc_palette (palette, size);
     memcpy (palette->colors, colors, size * sizeof (vec4));
@@ -163,9 +161,18 @@ void ezv_palette_set_predefined (ezv_palette_t *palette,
     memcpy (palette->colors, colors, size * sizeof (vec4));
     break;
   }
-  case EZV_PALETTE_BW: {
-    vec4 colors[]  = {{0.0f, 0.0f, 0.0f, 1.0f},  // black
-                      {1.0f, 1.0f, 1.0f, 1.0f}}; // white
+  case EZV_PALETTE_CHRISTMAS: {
+    vec4 colors[]  = {{0.0f, 0.3f, 0.0f, 1.0f},  // dark green
+                      {1.0f, 0.0f, 0.0f, 1.0f}}; // red
+    const int size = 2;
+
+    alloc_palette (palette, size);
+    memcpy (palette->colors, colors, size * sizeof (vec4));
+    break;
+  }
+  case EZV_PALETTE_YELLOW: {
+    vec4 colors[]  = {{1.0f, 1.0f, 0.0f, 0.0f},  // yellow 0% opacity
+                      {1.0f, 1.0f, 0.0f, 1.0f}}; // yellow 100% opacity
     const int size = 2;
 
     alloc_palette (palette, size);

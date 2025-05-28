@@ -1,11 +1,6 @@
 #ifndef MESH_DATA_IS_DEF
 #define MESH_DATA_IS_DEF
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 #include "global.h"
 #include "cppdefs.h"
 #include "ezv.h"
@@ -49,7 +44,7 @@ void mesh_data_dump_to_file (char *filename);
 void mesh_data_save_thumbnail (unsigned iteration);
 void mesh_data_build_neighbors_soa (unsigned round);
 
-void mesh_data_coarsen_partitions (unsigned group_size);
+void mesh_data_reorder_partitions (int newpos[]);
 
 extern mesh3d_obj_t easypap_mesh_desc;
 
@@ -120,10 +115,5 @@ static inline unsigned patch_neighbor (int n)
 
 
 extern unsigned picking_enabled;
-
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

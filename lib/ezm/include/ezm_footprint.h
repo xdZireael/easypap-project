@@ -1,10 +1,6 @@
 #ifndef EZM_FOOTPRINT_H
 #define EZM_FOOTPRINT_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "ezv.h"
 
 #include <stdint.h>
@@ -29,9 +25,5 @@ void ezm_footprint_finish_work_2D (ezm_footprint_t rec, uint64_t now, int who,
                                    unsigned h);
 
 int ezm_footprint_toggle_heat_mode (ezm_footprint_t rec);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

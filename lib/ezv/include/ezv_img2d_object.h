@@ -1,10 +1,6 @@
 #ifndef EVZ_IMG2D_OBJECT_H
 #define EVZ_IMG2D_OBJECT_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "ezv_img2d.h"
 #include "ezv_ctx.h"
 
@@ -31,8 +27,5 @@ static inline struct img2d_render_ctx_s *ezv_img2d_renderer (ezv_ctx_t ctx)
   return ((ezv_img2d_object_t *)(ctx->object))->render_ctx;
 }
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif

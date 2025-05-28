@@ -1,9 +1,6 @@
 #ifndef EZV_MATHNN_H
 #define EZV_MATHNN_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 struct _boolmat;
 typedef struct _boolmat ezv_boolmat_t;
@@ -19,8 +16,5 @@ unsigned ezv_boolmat_sum_row (ezv_boolmat_t *mat, unsigned row);
 
 void ezv_boolmat_display (ezv_boolmat_t *mat);
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif

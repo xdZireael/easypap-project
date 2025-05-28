@@ -1,11 +1,6 @@
 #ifndef MESH_MGPU_ISDEF
 #define MESH_MGPU_ISDEF
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 #include <unistd.h>
 
 #include "gpu.h"
@@ -23,9 +18,5 @@ int mesh_mgpu_offset_cells (int gpu);
 int mesh_mgpu_cells_to_compute (int gpu);
 int mesh_mgpu_nb_threads (int gpu);
 
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

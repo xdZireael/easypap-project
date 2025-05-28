@@ -18,7 +18,6 @@ static ezv_class_t the_class = {
   NULL,  // move z plane
   mon_set_data_colors, // set data colors
   NULL, // line pitch
-  NULL // screenshot
 };
 
 void ezv_mon_object_init (ezv_ctx_t ctx)

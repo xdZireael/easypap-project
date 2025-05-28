@@ -26,7 +26,7 @@ static char *file_load (const char *file)
   size_t r;
 
   char filename[1024];
-  sprintf (filename, "%s/share/ezv/shaders/%s", ezv_prefix, file);
+  sprintf (filename, "%s/share/shaders/%s", ezv_prefix, file);
 
   s = file_size (filename);
   b = malloc (s + 1);

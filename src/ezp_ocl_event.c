@@ -15,10 +15,10 @@
 
 #include "ezp_gpu_event.h"
 
-static cl_event the_events[MAX_GPU_DEVICES][_EVENT_NB];
+static cl_event the_events[2][_EVENT_NB];
 
 static uint32_t recorded_events = 0;
-static uint64_t ref_clock[MAX_GPU_DEVICES];
+static uint64_t ref_clock[2];
 
 static ezp_gpu_event_footprint_t zero_footprint = {0, 0, 0, 0};
 
@@ -40,7 +40,7 @@ void ezp_gpu_event_init (void)
 void ezp_gpu_event_reset (void)
 {
   // Free events
-  for (int gpu = 0; gpu < MAX_GPU_DEVICES; gpu++)
+  for (int gpu = 0; gpu < 2; gpu++)
     for (int evt = 0; evt < _EVENT_NB; evt++)
       if (is_recorded ((ezp_gpu_event_t)evt, gpu))
         clReleaseEvent (the_events[gpu][evt]);

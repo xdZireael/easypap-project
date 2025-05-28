@@ -2,9 +2,11 @@
 #include "img_data.h"
 #include "cppdefs.h"
 #include "mipp.h"
+#include <omp.h>
 
 #define INV_MASK (ezv_rgb_mask ())
 
+#ifdef ENABLE_VECTO
 ///////////////////////////// Vectorized version
 // ./run -l images/shibuya.png -k invert -v tiled -wt mipp -i 100 -n
 //
@@ -25,3 +27,4 @@ EXTERN int invert_do_tile_mipp (int x, int y, int width, int height)
 
   return 0;
 }
+#endif

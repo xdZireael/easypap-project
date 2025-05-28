@@ -19,7 +19,6 @@ static ezv_class_t the_class = {
   mesh3d_renderer_zplane_update, // move z plane
   mesh3d_set_data_colors, // set data colors
   NULL, // line pitch
-  mesh3d_screenshot // screenshot
 };
 
 void ezv_mesh3d_object_init (ezv_ctx_t ctx)
