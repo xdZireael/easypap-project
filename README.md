@@ -16,3 +16,7 @@ Most of the parameters can be specified as command line arguments, when running 
 * and much more!
 
 Please read the [Getting Started Guide](https://raymondnamyst.github.io/easypap/doc/Getting_Started.pdf) before you start!
+
+## Contributors
+- [Matis Duval](https://github.com/xdZireael) - Main development
+- [Lucas Marques](https://github.com/IkeYeek) - Main developement
